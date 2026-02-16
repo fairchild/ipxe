@@ -9,6 +9,7 @@ RUN chmod +x /usr/local/bin/download-ipxe.sh
 RUN mkdir -p /tftpboot
 
 ENV IPXE_SERVER_URL=https://ipxe.cloudcompute.com
+ENV DHCP_RANGE=192.168.1.0
 
 EXPOSE 69/udp 4011/udp
 
