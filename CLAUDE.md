@@ -8,7 +8,7 @@ iPXE bootstrap container — a proxy DHCP + TFTP server that network-boots bare-
 
 ## Relationship to services/ipxe
 
-This repo (`~/code/ipxe`) builds and publishes the **bootstrap container** (`ghcr.io/fairchild/ipxe-bootstrap`). The companion repo (`~/code/services/ipxe`) is a Cloudflare Worker that serves the boot menu, iPXE scripts, and binaries at `ipxe.cloudcompute.com`. The two repos form a complete system:
+This repo builds and publishes the **bootstrap container** (`ghcr.io/fairchild/ipxe-bootstrap`). The companion repo ([fairchild/services](https://github.com/fairchild/services) under `ipxe/`) is a Cloudflare Worker that serves the boot menu, iPXE scripts, and binaries at `ipxe.cloudcompute.com`. The two repos form a complete system:
 
 ```
 bootstrap container (this repo)          Worker service (services/ipxe)
@@ -36,7 +36,7 @@ docker run --rm --net=host --cap-add=NET_ADMIN \
   ipxe-bootstrap
 ```
 
-No unit tests in this repo — the container is tested by booting a machine. The Worker service has Vitest tests (`bun run test` in `~/code/services/ipxe`).
+No unit tests in this repo — the container is tested by booting a machine. The Worker service has Vitest tests (`bun run test` in the services/ipxe repo).
 
 ## CI/CD
 
@@ -62,7 +62,7 @@ The architecture detection in `dnsmasq.conf.template` maps PXE client-arch optio
 
 ## Key Design Decisions
 
-- **Stock iPXE binaries**: Downloaded at container startup from `boot.ipxe.org`, not built from source. The Worker service repo has `scripts/build-ipxe.sh` for custom builds with embedded chain URLs.
+- **Stock iPXE binaries**: Downloaded at container startup from `boot.ipxe.org`, not built from source. The Worker service repo has `scripts/build-ipxe.sh` for custom builds with embedded chain URLs (see the services repo).
 - **Proxy DHCP** (`port=0`, `dhcp-range=...,proxy`): Never assigns IPs. Works alongside any existing DHCP server.
 - **envsubst templating**: `dnsmasq.conf.template` uses `${IPXE_SERVER_URL}` and `${DHCP_RANGE}` — substituted at container startup, not build time.
 - **Alpine 3.20**: Minimal image — only `dnsmasq`, `envsubst`, `curl`.
