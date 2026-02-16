@@ -1,0 +1,38 @@
+# iPXE Bootstrap - Proxy DHCP + TFTP
+# Runs alongside existing DHCP server (proxy mode)
+#
+# Boot chain: firmware → TFTP (stock iPXE binary) → DHCP again →
+# dnsmasq hands iPXE the ${IPXE_SERVER_URL}/boot.ipxe URL →
+# iPXE chains to it over HTTPS → boot menu appears.
+
+# Proxy DHCP - don't assign IPs, just provide boot info
+port=0
+dhcp-range=${DHCP_RANGE},proxy
+
+# TFTP server
+enable-tftp
+tftp-root=/tftpboot
+
+# Logging
+log-dhcp
+
+# Architecture detection and binary selection
+# BIOS x86 (type 0)
+dhcp-match=set:bios,option:client-arch,0
+dhcp-boot=tag:bios,undionly.kpxe
+
+# UEFI x86-64 (type 7 and 9)
+dhcp-match=set:efi64,option:client-arch,7
+dhcp-match=set:efi64,option:client-arch,9
+dhcp-boot=tag:efi64,ipxe.efi
+
+# UEFI ARM64 (type 11)
+dhcp-match=set:arm64,option:client-arch,11
+dhcp-boot=tag:arm64,ipxe-arm64.efi
+
+# When iPXE does its second DHCP request (user-class "iPXE"),
+# hand it the boot menu URL. iPXE (unlike regular PXE firmware)
+# interprets HTTP/HTTPS URLs in the DHCP filename field.
+# This works with stock iPXE binaries — no custom build needed.
+dhcp-userclass=set:ipxe,iPXE
+dhcp-boot=tag:ipxe,${IPXE_SERVER_URL}/boot.ipxe
