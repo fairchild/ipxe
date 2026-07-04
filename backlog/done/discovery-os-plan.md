@@ -30,3 +30,4 @@ Outcome: merge-ready PR per repo touched, cross-linked.
 ---
 - 2026-07-04T18:41:18Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:42:14Z progress | discovery-os agent dispatched: overlay build in ipxe repo (feat/discovery-os off main), worker routes stacked on feat/ipxe-machine-registry
+- 2026-07-04T19:06:32Z advanced to=done
