@@ -36,3 +36,4 @@ Outcome: merge-ready PR with the three guest logs pasted/attached showing the fu
 
 ---
 - 2026-07-04T18:38:35Z advanced to=doing claimer=fairchild@blue branch=main
+- 2026-07-04T18:39:24Z progress | boot-lab agent dispatched, stacked worktree on fix/pin-ipxe-binaries, branch feat/qemu-boot-lab
