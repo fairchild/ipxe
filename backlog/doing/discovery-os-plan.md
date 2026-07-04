@@ -28,3 +28,4 @@ Real-hardware validation is Michael's step; the PR must include the exact QEMU c
 Outcome: merge-ready PR per repo touched, cross-linked.
 
 ---
+- 2026-07-04T18:41:18Z advanced to=doing claimer=fairchild@blue branch=main
