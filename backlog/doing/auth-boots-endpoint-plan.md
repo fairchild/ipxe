@@ -22,3 +22,4 @@ Do not break `GET /api/checkin` — iPXE calls it unauthenticated by design at b
 Outcome: merge-ready PR against the services repo. Deploy (`wrangler deploy` + secret) is Michael's step; say so in the PR body.
 
 ---
+- 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
