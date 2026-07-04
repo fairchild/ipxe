@@ -24,3 +24,4 @@ Verify: `docker build -t ipxe-bootstrap ./bootstrap` succeeds; container starts 
 Outcome: merge-ready PR against `fairchild/ipxe` main.
 
 ---
+- 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
