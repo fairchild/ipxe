@@ -23,3 +23,4 @@ Keep the diff reviewable: registry + tokens only — no preseed serving, no role
 Outcome: merge-ready PR against the services repo; PR body lists the wrangler D1 setup commands.
 
 ---
+- 2026-07-04T18:31:48Z advanced to=doing claimer=fairchild@blue branch=main
