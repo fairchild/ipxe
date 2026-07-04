@@ -1,0 +1,360 @@
+#!/bin/sh
+# discovery.start — Alpine diskless local.d hook for the discovery OS.
+#
+# Runs once the `local` service starts on the default runlevel. Inventories the
+# machine, registers with the iPXE Worker (trust-on-first-use, mints a token),
+# then polls for a role assignment forever. On assignment it reboots so the next
+# PXE boot serves the per-machine install script. A getty stays on tty1 the whole
+# time, so the box doubles as a rescue shell.
+#
+# POSIX sh (busybox ash) only. No bashisms.
+
+set -u
+
+LOG_TAG="discovery"
+API_DEFAULT="https://ipxe.cloudcompute.com"
+TOKEN_FILE="/tmp/machine-token"
+ID_FILE="/tmp/machine-id"
+# Overridable so container/CI tests can poll faster than the 30s field default.
+POLL_SECONDS="${POLL_SECONDS:-30}"
+
+log() {
+	# The local service's stdout doesn't reach the machine's console, so an
+	# operator watching the screen sees nothing unless we write there directly.
+	# Mirror to /dev/console (best effort), stdout, and the system log.
+	msg="[$LOG_TAG] $*"
+	echo "$msg" > /dev/console 2>/dev/null || true
+	echo "$msg"
+	logger -t "$LOG_TAG" "$*" 2>/dev/null || true
+}
+
+# ---- kernel cmdline params ---------------------------------------------------
+
+cmdline_value() {
+	# cmdline_value key -> prints the value of key=... from /proc/cmdline, or "".
+	key="$1"
+	# Kernel cmdline is space-separated tokens with no embedded spaces, so word
+	# splitting is exactly the parse we want here.
+	# shellcheck disable=SC2013
+	for tok in $(cat /proc/cmdline 2>/dev/null); do
+		case "$tok" in
+			"$key"=*) echo "${tok#*=}"; return 0 ;;
+		esac
+	done
+	return 1
+}
+
+# Precedence: an explicit IPXE_API env override (used by container/CI tests)
+# wins, then the kernel cmdline param, then the production default.
+if [ -z "${IPXE_API:-}" ]; then
+	IPXE_API="$(cmdline_value ipxe_api || true)"
+fi
+[ -n "${IPXE_API:-}" ] || IPXE_API="$API_DEFAULT"
+# Strip any trailing slash so we can concatenate paths cleanly.
+IPXE_API="${IPXE_API%/}"
+
+# ---- dependencies ------------------------------------------------------------
+
+ensure_tools() {
+	# The netboot initramfs carries busybox + apk. curl+ca-certificates give us
+	# real TLS and a reliable HTTP status code; jq makes JSON parsing robust.
+	# alpine_repo is on the cmdline, so apk can reach a mirror. Failure to add is
+	# non-fatal — we fall back to busybox wsget and a sed-based parser.
+	if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+		return 0
+	fi
+	log "installing curl ca-certificates jq via apk..."
+	apk add --no-cache curl ca-certificates jq >/dev/null 2>&1 || \
+		log "apk add failed; falling back to busybox wget"
+}
+
+# ---- inventory ---------------------------------------------------------------
+
+json_escape() {
+	# Escape a string for embedding in a JSON string literal.
+	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/ /g'
+}
+
+primary_mac() {
+	# Prefer eth0; otherwise the first non-loopback interface with an address.
+	if [ -r /sys/class/net/eth0/address ]; then
+		cat /sys/class/net/eth0/address
+		return 0
+	fi
+	for dev in /sys/class/net/*; do
+		name="$(basename "$dev")"
+		[ "$name" = "lo" ] && continue
+		[ -r "$dev/address" ] || continue
+		cat "$dev/address"
+		return 0
+	done
+	return 1
+}
+
+collect_macs_json() {
+	# JSON array of {name, mac} for every non-loopback interface.
+	first=1
+	printf '['
+	for dev in /sys/class/net/*; do
+		name="$(basename "$dev")"
+		[ "$name" = "lo" ] && continue
+		[ -r "$dev/address" ] || continue
+		addr="$(cat "$dev/address")"
+		[ -n "$addr" ] || continue
+		[ "$first" = 1 ] || printf ','
+		first=0
+		printf '{"name":"%s","mac":"%s"}' "$(json_escape "$name")" "$(json_escape "$addr")"
+	done
+	printf ']'
+}
+
+cpu_model() {
+	# x86 uses "model name"; arm exposes no model name, so fall back to Hardware.
+	m="$(grep -m1 -i '^model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)"
+	[ -n "$m" ] || m="$(grep -m1 -i '^Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)"
+	[ -n "$m" ] || m="$(grep -m1 -i '^Processor' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)"
+	# trim leading space
+	echo "${m# }"
+}
+
+cpu_cores() {
+	c="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null)"
+	[ -n "$c" ] && [ "$c" -gt 0 ] 2>/dev/null && echo "$c" || echo 0
+}
+
+mem_total_kb() {
+	awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+disks_json() {
+	# Prefer lsblk -J; fall back to /proc/partitions (whole disks only).
+	if command -v lsblk >/dev/null 2>&1; then
+		out="$(lsblk -J -b -d -o NAME,SIZE,TYPE,MODEL 2>/dev/null)"
+		if [ -n "$out" ]; then
+			# lsblk -d lists whole devices; emit its blockdevices array verbatim.
+			if command -v jq >/dev/null 2>&1; then
+				echo "$out" | jq -c '.blockdevices' 2>/dev/null && return 0
+			fi
+			echo "$out"
+			return 0
+		fi
+	fi
+	# /proc/partitions fallback: skip partitions (names ending in a digit for
+	# sdX/vdX, or pN for nvme), keep whole disks with their size in 1K blocks.
+	first=1
+	printf '['
+	# major/minor are positional throwaways from /proc/partitions columns.
+	# shellcheck disable=SC2034
+	while read -r major minor blocks name; do
+		case "$name" in
+			name|"") continue ;;
+			*[0-9]) case "$name" in nvme*|mmcblk*) : ;; *) continue ;; esac ;;
+		esac
+		[ -n "$blocks" ] || continue
+		[ "$first" = 1 ] || printf ','
+		first=0
+		printf '{"name":"%s","size_kb":%s}' "$(json_escape "$name")" "$blocks"
+	done < /proc/partitions
+	printf ']'
+}
+
+dmi_value() {
+	f="/sys/class/dmi/id/$1"
+	[ -r "$f" ] && cat "$f" 2>/dev/null || echo ""
+}
+
+build_inventory() {
+	arch="$(uname -m)"
+	kernel="$(uname -r)"
+	macs="$(collect_macs_json)"
+	cpu="$(cpu_model)"
+	cores="$(cpu_cores)"
+	mem="$(mem_total_kb)"
+	disks="$(disks_json)"
+	vendor="$(dmi_value sys_vendor)"
+	product="$(dmi_value product_name)"
+	serial="$(dmi_value product_serial)"
+
+	printf '{'
+	printf '"arch":"%s",' "$(json_escape "$arch")"
+	printf '"kernel":"%s",' "$(json_escape "$kernel")"
+	printf '"cpu":{"model":"%s","cores":%s},' "$(json_escape "$cpu")" "$cores"
+	printf '"memory_kb":%s,' "$mem"
+	printf '"macs":%s,' "$macs"
+	printf '"disks":%s,' "$disks"
+	printf '"dmi":{"vendor":"%s","product":"%s","serial":"%s"}' \
+		"$(json_escape "$vendor")" "$(json_escape "$product")" "$(json_escape "$serial")"
+	printf '}'
+}
+
+# ---- HTTP helpers ------------------------------------------------------------
+
+# http_post URL JSON_BODY [BEARER] -> writes body to $HTTP_BODY_FILE, echoes status
+HTTP_BODY_FILE="/tmp/discovery-http-body"
+http_post() {
+	url="$1"; body="$2"; bearer="${3:-}"
+	if command -v curl >/dev/null 2>&1; then
+		set -- -s -o "$HTTP_BODY_FILE" -w '%{http_code}' \
+			-X POST -H 'Content-Type: application/json' --data "$body"
+		[ -n "$bearer" ] && set -- "$@" -H "Authorization: Bearer $bearer"
+		curl "$@" "$url" 2>/dev/null || echo 000
+	else
+		# busybox wget: no status code, so infer from output presence.
+		hdr=""
+		[ -n "$bearer" ] && hdr="--header=Authorization: Bearer $bearer"
+		if wget -q -O "$HTTP_BODY_FILE" \
+			--header='Content-Type: application/json' \
+			${hdr:+"$hdr"} \
+			--post-data="$body" "$url" 2>/dev/null; then
+			echo 200
+		else
+			echo 000
+		fi
+	fi
+}
+
+# http_get URL BEARER -> writes body to $HTTP_BODY_FILE, echoes status
+http_get() {
+	url="$1"; bearer="${2:-}"
+	: > "$HTTP_BODY_FILE"
+	if command -v curl >/dev/null 2>&1; then
+		set -- -s -o "$HTTP_BODY_FILE" -w '%{http_code}'
+		[ -n "$bearer" ] && set -- "$@" -H "Authorization: Bearer $bearer"
+		curl "$@" "$url" 2>/dev/null || echo 000
+	else
+		hdr=""
+		[ -n "$bearer" ] && hdr="--header=Authorization: Bearer $bearer"
+		if wget -q -O "$HTTP_BODY_FILE" ${hdr:+"$hdr"} "$url" 2>/dev/null; then
+			[ -s "$HTTP_BODY_FILE" ] && echo 200 || echo 204
+		else
+			echo 000
+		fi
+	fi
+}
+
+json_field() {
+	# json_field KEY < body -> value of a top-level string field, or "".
+	key="$1"
+	if command -v jq >/dev/null 2>&1; then
+		jq -r --arg k "$key" '.[$k] // empty' "$HTTP_BODY_FILE" 2>/dev/null
+	else
+		sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$HTTP_BODY_FILE" | head -1
+	fi
+}
+
+# ---- register ----------------------------------------------------------------
+
+register() {
+	mac="$(primary_mac || true)"
+	if [ -z "$mac" ]; then
+		log "no usable network interface found; cannot register"
+		return 1
+	fi
+	arch="$(uname -m)"
+	inventory="$(build_inventory)"
+	body="$(printf '{"mac":"%s","arch":"%s","inventory":%s}' \
+		"$(json_escape "$mac")" "$(json_escape "$arch")" "$inventory")"
+
+	log "registering mac=$mac arch=$arch with $IPXE_API"
+	status="$(http_post "$IPXE_API/api/machines/register" "$body")"
+
+	case "$status" in
+		201)
+			MACHINE_ID="$(json_field id)"
+			TOKEN="$(json_field token)"
+			if [ -z "$MACHINE_ID" ] || [ -z "$TOKEN" ]; then
+				log "register returned 201 but id/token missing; body:"
+				cat "$HTTP_BODY_FILE"
+				return 1
+			fi
+			printf '%s' "$TOKEN" > "$TOKEN_FILE"
+			printf '%s' "$MACHINE_ID" > "$ID_FILE"
+			chmod 600 "$TOKEN_FILE"
+			log "registered as id=$MACHINE_ID (token saved to $TOKEN_FILE)"
+			return 0
+			;;
+		409)
+			log "MAC $mac is already registered elsewhere and we hold no token."
+			log "This machine cannot poll for an assignment. Re-image with the"
+			log "original token, or delete the stale registration in the registry."
+			return 2
+			;;
+		*)
+			log "register failed (http $status); body:"
+			cat "$HTTP_BODY_FILE" 2>/dev/null
+			return 1
+			;;
+	esac
+}
+
+# ---- assignment poll ---------------------------------------------------------
+
+poll_assignment() {
+	# Loops forever. 204 → keep waiting; 200 with a role → announce and reboot.
+	mac="$(primary_mac || echo unknown)"
+	while true; do
+		status="$(http_get "$IPXE_API/api/machines/$MACHINE_ID/assignment" "$TOKEN")"
+		case "$status" in
+			200)
+				role="$(json_field role)"
+				log "assignment received: role=${role:-unknown}. Rebooting into install."
+				sync
+				sleep 2
+				reboot
+				return 0
+				;;
+			204)
+				log "waiting for assignment — id=$MACHINE_ID mac=$mac (poll ${POLL_SECONDS}s)"
+				;;
+			401)
+				log "assignment poll unauthorized (token rejected); stopping poll"
+				return 1
+				;;
+			*)
+				log "assignment poll error (http $status); retrying"
+				;;
+		esac
+		sleep "$POLL_SECONDS"
+	done
+}
+
+# ---- unregistered wait -------------------------------------------------------
+
+wait_without_token() {
+	mac="$(primary_mac || echo unknown)"
+	while true; do
+		log "no token — machine mac=$mac is idle. Use the shell on tty1 to rescue."
+		sleep "$POLL_SECONDS"
+	done
+}
+
+# ---- main --------------------------------------------------------------------
+
+main() {
+	log "discovery OS starting — api=$IPXE_API"
+	ensure_tools
+
+	register
+	rc=$?
+	if [ "$rc" = 0 ]; then
+		MACHINE_ID="$(cat "$ID_FILE")"
+		TOKEN="$(cat "$TOKEN_FILE")"
+		poll_assignment &
+	elif [ "$rc" = 2 ]; then
+		wait_without_token &
+	else
+		log "registration failed; retrying inventory+register in ${POLL_SECONDS}s loop"
+		( while true; do
+			sleep "$POLL_SECONDS"
+			if register; then
+				MACHINE_ID="$(cat "$ID_FILE")"
+				TOKEN="$(cat "$TOKEN_FILE")"
+				poll_assignment
+				break
+			fi
+		done ) &
+	fi
+	# Return promptly so openrc continues booting and brings up the tty1 getty.
+}
+
+main "$@"
