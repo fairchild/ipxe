@@ -27,3 +27,4 @@ Outcome: merge-ready PR(s), cross-linked if both repos change.
 
 ---
 - 2026-07-04T18:29:31Z advanced to=doing claimer=fairchild@blue branch=main
+- 2026-07-04T18:30:12Z progress | agent dispatched, stacked worktree on fix/pin-ipxe-binaries, branch feat/custom-ipxe-build
