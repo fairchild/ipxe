@@ -26,3 +26,4 @@ Outcome: merge-ready PR against `fairchild/ipxe` main.
 ---
 - 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:25:02Z progress | agent dispatched in worktree, branch fix/pin-ipxe-binaries
+- 2026-07-04T18:29:10Z advanced to=done
