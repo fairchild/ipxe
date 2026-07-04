@@ -22,6 +22,7 @@ Wave 2 — the pipeline spine: a RAM-booting discovery OS that inventories hardw
 
 ## Priorities
 
+0. `validation` — QEMU boot lab: repeatable end-to-end PXE verification from this Mac (raised to top 2026-07-04 — verify as much as possible without hardware)
 1. `security-debts` — binary pinning, /api/boots auth, repo hygiene
 2. `machine-identity` — first-boot token, D1 registry
 3. `discovery-os` — RAM-boot inventory image + pending-machine flow
