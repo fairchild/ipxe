@@ -24,3 +24,4 @@ Outcome: merge-ready PR against the services repo. Deploy (`wrangler deploy` + s
 ---
 - 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:24:51Z progress | pin-ipxe-binaries: agent dispatched in worktree, branch fix/pin-ipxe-binaries
+- 2026-07-04T18:25:02Z progress | correction: previous line was about pin-ipxe-binaries; this task: agent dispatched to services repo worktree, branch fix/ipxe-boots-auth
