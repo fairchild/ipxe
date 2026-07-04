@@ -26,3 +26,4 @@ Verify: QEMU BIOS and UEFI boots chain to boot.ipxe over HTTPS with no ca.ipxe.o
 Outcome: merge-ready PR(s), cross-linked if both repos change.
 
 ---
+- 2026-07-04T18:29:31Z advanced to=doing claimer=fairchild@blue branch=main
