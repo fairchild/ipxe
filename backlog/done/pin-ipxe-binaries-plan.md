@@ -27,3 +27,4 @@ Outcome: merge-ready PR against `fairchild/ipxe` main.
 - 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:25:02Z progress | agent dispatched in worktree, branch fix/pin-ipxe-binaries
 - 2026-07-04T18:29:10Z advanced to=done
+- 2026-07-04T18:29:11Z progress | PR=https://github.com/fairchild/ipxe/pull/1 verified: build+hash-fail+run w/ docker 28.5.2; NET_ADMIN required (README quick-start was broken as written)
