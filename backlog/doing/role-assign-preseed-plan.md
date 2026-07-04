@@ -26,3 +26,4 @@ Outcome: merge-ready PR against the services repo.
 
 ---
 - 2026-07-04T19:06:33Z advanced to=doing claimer=fairchild@blue branch=main
+- 2026-07-04T19:07:18Z progress | role-preseed agent dispatched, branch feat/ipxe-role-preseed stacked on feat/ipxe-discovery-os (top of 4-PR chain)
