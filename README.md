@@ -5,8 +5,10 @@ Proxy DHCP + TFTP container for network booting bare-metal machines into an iPXE
 ## Quick Start
 
 ```bash
-docker run -d --net=host ghcr.io/fairchild/ipxe-bootstrap
+docker run -d --net=host --cap-add=NET_ADMIN ghcr.io/fairchild/ipxe-bootstrap
 ```
+
+`NET_ADMIN` is required — dnsmasq refuses to start without it.
 
 ## How It Works
 
@@ -23,6 +25,8 @@ dnsmasq hands iPXE the boot menu URL → iPXE chains over HTTPS → boot menu
 6. iPXE fetches and renders the boot menu
 
 Architecture is auto-detected: BIOS x86, UEFI x86-64, and UEFI ARM64.
+
+The iPXE binaries are baked into the image at build time and verified against pinned sha256s (`bootstrap/ipxe-binaries.sha256`) — the container makes no network fetches at startup.
 
 ## Environment Variables
 

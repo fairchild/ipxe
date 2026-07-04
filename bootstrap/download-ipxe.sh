@@ -1,16 +1,15 @@
 #!/bin/sh
-# Download stock iPXE binaries from boot.ipxe.org if not already present.
-# These work with our dnsmasq config which tells iPXE to chain to our service.
+# Fetch stock iPXE binaries from boot.ipxe.org at image build time.
+# The Dockerfile verifies them against ipxe-binaries.sha256 after this runs.
 set -e
 
 TFTP_DIR="${TFTP_DIR:-/tftpboot}"
+mkdir -p "$TFTP_DIR"
 
 download() {
   local url="$1" dest="$2"
-  if [ ! -f "$dest" ]; then
-    echo "Downloading $url ..."
-    curl -fsSL -o "$dest" "$url"
-  fi
+  echo "Downloading $url ..."
+  curl -fsSL -o "$dest" "$url"
 }
 
 download "https://boot.ipxe.org/undionly.kpxe"             "$TFTP_DIR/undionly.kpxe"

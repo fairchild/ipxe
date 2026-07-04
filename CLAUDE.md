@@ -62,7 +62,7 @@ The architecture detection in `dnsmasq.conf.template` maps PXE client-arch optio
 
 ## Key Design Decisions
 
-- **Stock iPXE binaries**: Downloaded at container startup from `boot.ipxe.org`, not built from source. The Worker service repo has `scripts/build-ipxe.sh` for custom builds with embedded chain URLs (see the services repo).
+- **Stock iPXE binaries**: Downloaded at image build time from `boot.ipxe.org` and verified against pinned sha256s (`bootstrap/ipxe-binaries.sha256`) — the build fails on mismatch, and the container makes no network fetches at startup. To bump versions, refresh the hashes in that file. The Worker service repo has `scripts/build-ipxe.sh` for custom builds with embedded chain URLs (see the services repo).
 - **Proxy DHCP** (`port=0`, `dhcp-range=...,proxy`): Never assigns IPs. Works alongside any existing DHCP server.
 - **envsubst templating**: `dnsmasq.conf.template` uses `${IPXE_SERVER_URL}` and `${DHCP_RANGE}` — substituted at container startup, not build time.
-- **Alpine 3.20**: Minimal image — only `dnsmasq`, `envsubst`, `curl`.
+- **Alpine 3.20**: Minimal image — runtime stage has only `dnsmasq` and `envsubst`; `curl` lives in the build-time fetch stage.
