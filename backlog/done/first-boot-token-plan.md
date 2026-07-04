@@ -26,3 +26,4 @@ Outcome: merge-ready PR against the services repo; PR body lists the wrangler D1
 - 2026-07-04T18:31:48Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:32:30Z progress | agent dispatched, stacked worktree on fix/ipxe-boots-auth, branch feat/ipxe-machine-registry
 - 2026-07-04T18:41:18Z advanced to=done
+- 2026-07-04T18:41:18Z progress | PR=https://github.com/fairchild/services/pull/1069 56 tests pass, 0 new tsc errors; MACHINES D1 binding; 256-bit tokens hash-only; forward-only state map; D1 create/migrate are Michael's deploy steps
