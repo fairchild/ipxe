@@ -25,3 +25,4 @@ Verify end-to-end in QEMU: discovery → assign via curl → reboot → unattend
 Outcome: merge-ready PR against the services repo.
 
 ---
+- 2026-07-04T19:06:33Z advanced to=doing claimer=fairchild@blue branch=main
