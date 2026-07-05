@@ -13,26 +13,25 @@ docker run -d --net=host --cap-add=NET_ADMIN ghcr.io/fairchild/ipxe-bootstrap
 ## How It Works
 
 ```
-firmware PXE → TFTP (stock iPXE binary) → DHCP again →
-dnsmasq hands iPXE the boot menu URL → iPXE chains over HTTPS → boot menu
+firmware PXE → TFTP (custom iPXE binary) →
+embedded script chains to the boot menu over HTTPS → boot menu
 ```
 
 1. Machine powers on, firmware broadcasts PXE request
 2. dnsmasq (proxy DHCP) responds with a TFTP boot file — no IP assignment, your real DHCP handles that
-3. Firmware loads stock iPXE binary via TFTP
-4. iPXE does a second DHCP request (identified by user-class `iPXE`)
-5. dnsmasq responds with the HTTPS boot menu URL
-6. iPXE fetches and renders the boot menu
+3. Firmware loads the custom iPXE binary via TFTP
+4. iPXE runs its embedded script: retry DHCP, then chain to `<IPXE_SERVER_URL>/boot.ipxe?arch=<buildarch>` over HTTPS
+5. iPXE fetches and renders the boot menu (TLS validated against pinned root CAs, no `ca.ipxe.org` callout)
 
-Architecture is auto-detected: BIOS x86, UEFI x86-64, and UEFI ARM64.
+Architecture is auto-detected: BIOS x86 (`undionly.kpxe`, with `ipxe.pxe` as a broken-UNDI fallback), UEFI x86-64, and UEFI ARM64.
 
-The iPXE binaries are baked into the image at build time and verified against pinned sha256s (`bootstrap/ipxe-binaries.sha256`) — the container makes no network fetches at startup.
+The binaries are compiled from a pinned iPXE upstream commit in the image's builder stage — see [`build/`](build/). Each embeds the chain script and the trusted root-CA fingerprints, so the container makes no network fetches at startup and does not depend on iPXE's own CA infrastructure. The dnsmasq user-class stanza remains as a fallback for any stock iPXE binary but is no longer the primary path.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IPXE_SERVER_URL` | `https://ipxe.cloudcompute.com` | HTTPS URL serving `boot.ipxe` menu |
+| `IPXE_SERVER_URL` | `https://ipxe.cloudcompute.com` | Boot menu host for the dnsmasq user-class fallback. The embedded chain URL is baked at build time via `ARG IPXE_SERVER_URL` (see [`build/`](build/)), not this runtime var. |
 | `DHCP_RANGE` | `192.168.1.0` | Network for proxy DHCP (e.g. `192.168.1.0`) |
 
 ## Architectures
