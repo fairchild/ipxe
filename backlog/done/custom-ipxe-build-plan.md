@@ -29,3 +29,4 @@ Outcome: merge-ready PR(s), cross-linked if both repos change.
 - 2026-07-04T18:29:31Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:30:12Z progress | agent dispatched, stacked worktree on fix/pin-ipxe-binaries, branch feat/custom-ipxe-build
 - 2026-07-05T22:22:44Z progress | QEMU slirp boot caught real bug: CF presents GlobalSign-cross-signed GTS R4, iPXE pins exact fingerprint -> self-signed R4 anchor never matches; fixed w/ cross-signed anchor + hedges; rebuilding
+- 2026-07-05T22:48:22Z advanced to=done
