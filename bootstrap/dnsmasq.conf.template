@@ -1,9 +1,14 @@
 # iPXE Bootstrap - Proxy DHCP + TFTP
-# Runs alongside existing DHCP server (proxy mode)
+# Runs alongside an existing DHCP server (proxy mode): assigns no IPs, only
+# supplies PXE boot information.
 #
 # Boot chain: firmware → TFTP (stock iPXE binary) → DHCP again →
 # dnsmasq hands iPXE the ${IPXE_SERVER_URL}/boot.ipxe URL →
 # iPXE chains to it over HTTPS → boot menu appears.
+#
+# NOTE: in proxy mode dnsmasq answers PXE clients via pxe-service, NOT dhcp-boot
+# (dhcp-boot applies only when dnsmasq is the primary DHCP server; it is silently
+# ignored for proxy clients). The qemu boot lab (lab/) verifies this end to end.
 
 # Proxy DHCP - don't assign IPs, just provide boot info
 port=0
@@ -16,23 +21,26 @@ tftp-root=/tftpboot
 # Logging
 log-dhcp
 
-# Architecture detection and binary selection
-# BIOS x86 (type 0)
-dhcp-match=set:bios,option:client-arch,0
-dhcp-boot=tag:bios,undionly.kpxe
+# Architecture detection: tag each client by its DHCP client-arch (option 93).
+dhcp-match=set:bios,option:client-arch,0     # BIOS x86
+dhcp-match=set:efi64,option:client-arch,7    # UEFI x86-64
+dhcp-match=set:efi64,option:client-arch,9    # UEFI x86-64 (alt)
+dhcp-match=set:arm64,option:client-arch,11   # UEFI ARM64
 
-# UEFI x86-64 (type 7 and 9)
-dhcp-match=set:efi64,option:client-arch,7
-dhcp-match=set:efi64,option:client-arch,9
-dhcp-boot=tag:efi64,ipxe.efi
-
-# UEFI ARM64 (type 11)
-dhcp-match=set:arm64,option:client-arch,11
-dhcp-boot=tag:arm64,ipxe-arm64.efi
-
-# When iPXE does its second DHCP request (user-class "iPXE"),
-# hand it the boot menu URL. iPXE (unlike regular PXE firmware)
-# interprets HTTP/HTTPS URLs in the DHCP filename field.
-# This works with stock iPXE binaries — no custom build needed.
+# iPXE identifies itself with user-class "iPXE" on its second DHCP request.
 dhcp-userclass=set:ipxe,iPXE
-dhcp-boot=tag:ipxe,${IPXE_SERVER_URL}/boot.ipxe
+
+# Stage 1 — dumb firmware PXE (not yet iPXE): hand it the stock iPXE binary for
+# its architecture, served from our TFTP root.
+pxe-service=tag:bios,tag:!ipxe,   x86PC,      "iPXE (BIOS x86)",    undionly.kpxe
+pxe-service=tag:efi64,tag:!ipxe,  BC_EFI,     "iPXE (UEFI x86-64)", ipxe.efi
+pxe-service=tag:efi64,tag:!ipxe,  X86-64_EFI, "iPXE (UEFI x86-64)", ipxe.efi
+pxe-service=tag:arm64,tag:!ipxe,  ARM64_EFI,  "iPXE (UEFI ARM64)",  ipxe-arm64.efi
+
+# Stage 2 — iPXE has loaded and re-requests (user-class iPXE): hand it the boot
+# menu URL. iPXE interprets the HTTP/HTTPS URL in the filename field and chains
+# to it. This works with stock iPXE binaries — no custom build needed.
+pxe-service=tag:bios,tag:ipxe,   x86PC,      "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
+pxe-service=tag:efi64,tag:ipxe,  BC_EFI,     "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
+pxe-service=tag:efi64,tag:ipxe,  X86-64_EFI, "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
+pxe-service=tag:arm64,tag:ipxe,  ARM64_EFI,  "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
