@@ -1,21 +1,34 @@
-# Fetch stage: download stock iPXE binaries and verify against pinned sha256s.
-# Build fails on mismatch — the runtime image never touches the network.
-FROM alpine:3.20 AS fetch
+# Builder stage: compile the custom iPXE binaries from a pinned upstream commit
+# (see build/compile-ipxe.sh — shared with the standalone build/Dockerfile so
+# the container ships exactly what build/build.sh produces). Each binary embeds
+# a retry→chain-over-HTTPS boot script and pinned root-CA fingerprints, so there
+# is no boot.ipxe.org download and no ca.ipxe.org trust dependency.
+#
+# Build context is the repo root: docker build -f bootstrap/Dockerfile .
+# Pinned to amd64 so the builder cross-compiles every iPXE target identically
+# for both the amd64 and arm64 runtime images (arm64 runs it under emulation).
+FROM --platform=linux/amd64 debian:bookworm-slim AS builder
 
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential liblzma-dev git perl ca-certificates \
+      gcc-i686-linux-gnu binutils-i686-linux-gnu \
+      gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY download-ipxe.sh /usr/local/bin/download-ipxe.sh
-COPY ipxe-binaries.sha256 /ipxe-binaries.sha256
+# Bakes the chain URL into the embedded script. Override to point the compiled
+# binaries at a different boot menu host.
+ARG IPXE_SERVER_URL=https://ipxe.cloudcompute.com
+ENV IPXE_SERVER_URL=${IPXE_SERVER_URL}
 
-RUN sh /usr/local/bin/download-ipxe.sh && \
-    cd /tftpboot && sha256sum -c /ipxe-binaries.sha256
+COPY build /build
+RUN OUTPUT_DIR=/tftpboot sh /build/compile-ipxe.sh
 
 FROM alpine:3.20
 
 RUN apk add --no-cache dnsmasq envsubst
 
-COPY dnsmasq.conf.template /etc/dnsmasq.conf.template
-COPY --from=fetch /tftpboot /tftpboot
+COPY bootstrap/dnsmasq.conf.template /etc/dnsmasq.conf.template
+COPY --from=builder /tftpboot /tftpboot
 
 ENV IPXE_SERVER_URL=https://ipxe.cloudcompute.com
 ENV DHCP_RANGE=192.168.1.0

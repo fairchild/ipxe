@@ -14,8 +14,8 @@ This repo builds and publishes the **bootstrap container** (`ghcr.io/fairchild/i
 bootstrap container (this repo)          Worker service (services/ipxe)
 ─────────────────────────────           ──────────────────────────────
 dnsmasq proxy DHCP + TFTP               Hono app on Cloudflare Workers
-Serves stock iPXE binaries              Generates iPXE boot menus
-Tells iPXE where to chain    ─────→    /boot.ipxe, /menu/:id.ipxe
+Serves custom-compiled iPXE binaries    Generates iPXE boot menus
+Binaries embed the chain URL  ─────→    /boot.ipxe, /menu/:id.ipxe
                                         Serves custom binaries from R2
                                         Boot telemetry via KV
 ```
@@ -23,8 +23,9 @@ Tells iPXE where to chain    ─────→    /boot.ipxe, /menu/:id.ipxe
 ## Build & Test
 
 ```bash
-# Build container locally
-docker build -t ipxe-bootstrap ./bootstrap
+# Build container locally (context is the repo root — the builder stage
+# compiles iPXE from build/, so ./bootstrap alone is not enough)
+docker build -f bootstrap/Dockerfile -t ipxe-bootstrap .
 
 # Run (requires host networking for DHCP)
 docker run --rm --net=host --cap-add=NET_ADMIN ipxe-bootstrap
@@ -34,14 +35,22 @@ docker run --rm --net=host --cap-add=NET_ADMIN \
   -e IPXE_SERVER_URL=https://ipxe.cloudcompute.com \
   -e DHCP_RANGE=10.0.0.0 \
   ipxe-bootstrap
+
+# Compile just the iPXE binaries to build/dist/ (and refresh the sha256 record)
+./build/build.sh
 ```
+
+The chain URL is baked into the binaries at build time via `ARG IPXE_SERVER_URL`
+(passed to the builder stage / `build.sh`). The runtime `-e IPXE_SERVER_URL` only
+affects the legacy user-class fallback in `dnsmasq.conf.template`, not the
+embedded script.
 
 No unit tests in this repo — the container is tested by booting a machine. The Worker service has Vitest tests (`bun run test` in the services/ipxe repo).
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/build-push.yml`) triggers on changes to `bootstrap/**`:
-- Builds multi-arch image (`linux/amd64`, `linux/arm64`) via QEMU + buildx
+GitHub Actions (`.github/workflows/build-push.yml`) triggers on changes to `bootstrap/**` or `build/**`:
+- Builds multi-arch image (`linux/amd64`, `linux/arm64`) via QEMU + buildx (the iPXE builder stage compiles under emulation; ~a few min per target)
 - Pushes to `ghcr.io/fairchild/ipxe-bootstrap` with branch/SHA/latest tags
 - PRs build but don't push
 
@@ -49,20 +58,26 @@ GitHub Actions (`.github/workflows/build-push.yml`) triggers on changes to `boot
 
 ```
 1. Machine PXE boots → dnsmasq responds (proxy DHCP)
-2. Firmware downloads iPXE binary via TFTP (arch auto-detected: BIOS/UEFI x86-64/ARM64)
-3. iPXE does second DHCP (user-class "iPXE") → dnsmasq responds with boot menu URL
-4. iPXE chains to https://ipxe.cloudcompute.com/boot.ipxe over HTTPS
+2. Firmware downloads custom iPXE binary via TFTP (arch auto-detected: BIOS/UEFI x86-64/ARM64)
+3. iPXE runs its embedded script: retry DHCP, then chain to
+   https://ipxe.cloudcompute.com/boot.ipxe?arch=${buildarch} over HTTPS
+   (TLS validated against pinned root CAs — no ca.ipxe.org callout)
+4. Worker returns the arch-filtered boot menu
 5. User selects OS → Worker returns per-distro iPXE script → machine boots
 ```
 
+The `?arch=${buildarch}` param matches the Worker's arch-detector convention (`services/ipxe/src/scripts/templates.ts`) so menu filtering still works. The dnsmasq user-class stanza (second-DHCP → boot URL) stays as a fallback for stock binaries but is no longer load-bearing.
+
 The architecture detection in `dnsmasq.conf.template` maps PXE client-arch options to binaries:
-- `0` → `undionly.kpxe` (BIOS x86)
+- `0` → `undionly.kpxe` (BIOS x86; `ipxe.pxe` is also built as a broken-UNDI fallback)
 - `7`, `9` → `ipxe.efi` (UEFI x86-64)
 - `11` → `ipxe-arm64.efi` (UEFI ARM64)
 
 ## Key Design Decisions
 
-- **Stock iPXE binaries**: Downloaded at image build time from `boot.ipxe.org` and verified against pinned sha256s (`bootstrap/ipxe-binaries.sha256`) — the build fails on mismatch, and the container makes no network fetches at startup. To bump versions, refresh the hashes in that file. The Worker service repo has `scripts/build-ipxe.sh` for custom builds with embedded chain URLs (see the services repo).
+- **Custom iPXE, compiled from pinned source** (`build/`): the container's builder stage compiles iPXE from a pinned upstream commit (v2.0.0, `12798ec2…`) via the shared `build/compile-ipxe.sh`. Each binary embeds a boot script (retry DHCP → chain to the menu over HTTPS) and pinned root-CA fingerprints (`TRUST=`), so there is no `boot.ipxe.org` download and no `ca.ipxe.org` trust dependency. Supply-chain integrity is the pinned commit (the build aborts if the clone's HEAD differs); iPXE stamps build metadata so the binaries are not bit-reproducible, and `bootstrap/ipxe-binaries.sha256` is a regenerated reference record, not a gate. To bump the iPXE version, change `IPXE_REF`/`IPXE_COMMIT` in `compile-ipxe.sh` and rerun `build/build.sh`.
+- **Trusted roots** (`build/certs/`): iPXE trusts by fingerprint and can only anchor on a cert the server actually presents. `ipxe.cloudcompute.com` (Cloudflare) presents a Google Trust Services ECDSA chain whose top cert is GTS Root R4 **cross-signed by GlobalSign** — a different DER (and fingerprint) from the self-signed R4 root, so the cross-signed cert is the load-bearing anchor (`gtsr4-globalsign.pem`). Self-signed R4, GTS R1, and ISRG Root X1 are embedded as inert hedges against CDN cert rotation. This cross-sign subtlety was caught by the QEMU boot test — see `build/certs/README.md`.
+- **Build context is the repo root**: `bootstrap/Dockerfile` COPYs `build/` for the builder stage, so build with `docker build -f bootstrap/Dockerfile .` (CI passes `context: .`). The builder is pinned to `linux/amd64` and cross-compiles each target (i686 for BIOS, native for x86_64-efi, aarch64 for arm64-efi).
 - **Proxy DHCP** (`port=0`, `dhcp-range=...,proxy`): Never assigns IPs. Works alongside any existing DHCP server.
 - **envsubst templating**: `dnsmasq.conf.template` uses `${IPXE_SERVER_URL}` and `${DHCP_RANGE}` — substituted at container startup, not build time.
-- **Alpine 3.20**: Minimal image — runtime stage has only `dnsmasq` and `envsubst`; `curl` lives in the build-time fetch stage.
+- **Alpine 3.20 runtime**: minimal final image — only `dnsmasq` and `envsubst`; all compilation happens in the discarded Debian builder stage.
