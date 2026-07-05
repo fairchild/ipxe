@@ -38,3 +38,4 @@ Outcome: merge-ready PR with the three guest logs pasted/attached showing the fu
 - 2026-07-04T18:38:35Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:39:24Z progress | boot-lab agent dispatched, stacked worktree on fix/pin-ipxe-binaries, branch feat/qemu-boot-lab
 - 2026-07-05T22:40:57Z advanced to=done
+- 2026-07-05T22:40:57Z progress | PR=https://github.com/fairchild/ipxe/pull/3 26/26 PASS (bios+uefi+arm64, local mode); CAUGHT SHIP-BLOCKER: dhcp-boot silently ignored in proxy mode, production config never served boot info to PXE clients — fixed with tag-gated pxe-service in same PR; orchestrator pushed/verified after agent wedged
