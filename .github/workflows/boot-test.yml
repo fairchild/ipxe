@@ -1,0 +1,33 @@
+name: Boot Test
+
+# End-to-end PXE boot verification: builds the bootstrap image, builds the QEMU
+# boot lab on top of it, and boots BIOS + UEFI x86 guests through the full proxy
+# DHCP -> TFTP -> iPXE -> HTTP chain in deterministic local mode (no dependency
+# on the live Worker). arm64 is exercised locally (TCG on GitHub runners is slow).
+on:
+  push:
+    branches: [main]
+    paths: [bootstrap/**, lab/**, scripts/test-boot.sh]
+  pull_request:
+    paths: [bootstrap/**, lab/**, scripts/test-boot.sh]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run boot lab (BIOS + UEFI x86, local mode)
+        run: MODE=local GUESTS="bios uefi" GUEST_TIMEOUT=280 scripts/test-boot.sh
+
+      - name: Upload boot logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-lab-logs
+          path: lab/out/
+          if-no-files-found: warn

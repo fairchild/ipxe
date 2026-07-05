@@ -1,0 +1,8 @@
+#!ipxe
+# Local-mode chain target. Reached only if the full chain worked: firmware PXE →
+# TFTP stock iPXE → iPXE second DHCP (user-class iPXE) → HTTP chain to here.
+# The marker below is what scripts/test-boot.sh greps for to prove milestone (d).
+echo LAB_CHAIN_OK arch=${buildarch} mac=${net0/mac} ip=${ip}
+echo LAB_MENU ipxe.cloudcompute.com stub menu reached
+sleep 3
+reboot
