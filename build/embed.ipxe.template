@@ -1,0 +1,8 @@
+#!ipxe
+# Embedded boot script compiled into every custom iPXE binary.
+# __IPXE_SERVER_URL__ is substituted at build time from ARG IPXE_SERVER_URL.
+# ${buildarch} is left for iPXE to expand at runtime (i386 / x86_64 / arm64),
+# matching the ?arch= param the Worker's arch-detector uses to filter the menu.
+:retry
+dhcp || goto retry
+chain __IPXE_SERVER_URL__/boot.ipxe?arch=${buildarch} || goto retry

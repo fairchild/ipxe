@@ -1,0 +1,20 @@
+# Authoritative DHCP — stands in for the home router / existing LAN DHCP.
+# It assigns IPs and hands out a gateway + DNS, but deliberately serves NO boot
+# options: that is the proxy's job. If this file ever grows a dhcp-boot line the
+# lab stops proving that proxy DHCP coexists with a dumb existing DHCP server.
+interface=br0
+bind-interfaces
+except-interface=lo
+
+dhcp-range=10.77.0.50,10.77.0.150,255.255.255.0,1h
+dhcp-option=option:router,10.77.0.1
+dhcp-option=option:dns-server,10.77.0.1
+dhcp-authoritative
+
+# DNS forwarder so guests (and iPXE, in live mode) can resolve the Worker.
+server=1.1.1.1
+server=8.8.8.8
+
+log-dhcp
+log-queries
+log-facility=/lab/out/auth.log
