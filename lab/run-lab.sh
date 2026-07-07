@@ -164,9 +164,12 @@ run_qemu() {
   kill "$qpid" 2>/dev/null; wait "$qpid" 2>/dev/null
 }
 
+# The embedded boot script chains to .../boot.ipxe?arch=${buildarch}, so iPXE's
+# "<url>... ok" line carries the query string — match boot.ipxe followed by any
+# non-space run before the "... ok".
 serial_chain_pat() {
   if [ "$MODE" = "local" ]; then echo 'LAB_CHAIN_OK'
-  else echo 'boot\.ipxe\.\.\. ok|Operating Systems|Debian 13'; fi
+  else echo 'boot\.ipxe[^ ]*\.\.\. ok|Operating Systems|Debian 13'; fi
 }
 
 assert_common() {               # assert_common <guest> <archtag>
@@ -222,7 +225,7 @@ boot_efi_guest() {              # boot_efi_guest <guest> <archtag> <bootname> <c
   echo "  assertions [$g]:"
   local ok=0; assert_common "$g" "$tag" || ok=1
   check "iPXE banner on serial"        "$slog" "iPXE .* Open Source Network Boot" || ok=1
-  check "iPXE fetched the boot script" "$slog" "boot\\.ipxe\\.\\.\\. ok" || ok=1
+  check "iPXE fetched the boot script" "$slog" "boot\\.ipxe[^ ]*\\.\\.\\. ok" || ok=1
   check "chain reached target (serial)" "$slog" "$(serial_chain_pat)" || ok=1
   [ "$MODE" = "local" ] && { [ "$(http_hits)" -gt "$before" ] && note_pass "chain reached HTTP stub (access log)" || { note_fail "chain reached HTTP stub (access log)"; ok=1; }; }
   [ $ok -eq 0 ] && RESULT[$g]=PASS || RESULT[$g]=FAIL

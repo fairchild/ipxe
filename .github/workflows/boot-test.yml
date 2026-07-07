@@ -24,6 +24,13 @@ jobs:
       - name: Run boot lab (BIOS + UEFI x86, local mode)
         run: MODE=local GUESTS="bios uefi" GUEST_TIMEOUT=280 scripts/test-boot.sh
 
+      # The lab runs privileged and writes lab/out/ as root through the bind
+      # mount, so the unprivileged runner can't read those files to zip them
+      # (upload-artifact fails with EACCES). Grant read/traverse before upload.
+      - name: Make boot logs readable for upload
+        if: always()
+        run: sudo chmod -R a+rX lab/out || true
+
       - name: Upload boot logs
         if: always()
         uses: actions/upload-artifact@v4

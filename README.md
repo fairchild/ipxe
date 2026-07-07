@@ -77,21 +77,28 @@ It builds the bootstrap image, builds the lab on top of it (consuming the
 - boots a **BIOS x86**, a **UEFI x86-64** (OVMF), and a **UEFI ARM64** (AAVMF)
   guest on a bridge, capturing serial + DHCP/HTTP logs;
 - asserts, per guest: the authoritative server leased the IP while the proxy
-  supplied boot info, the proxy tagged the arch, iPXE started and got the boot
-  URL on its second DHCP, and the chain reached the target. A **proxy contract**
-  phase additionally verifies each arch → stock-binary mapping (including UEFI
-  arch 9, which no guest covers) and that the TFTP server serves each binary with
-  the pinned sha256.
+  supplied boot info, the proxy tagged the arch, iPXE started and chained to the
+  boot menu over HTTP(S) via the URL compiled into its embedded script, and the
+  chain reached the target. A **proxy contract** phase additionally verifies each
+  arch → binary mapping (including UEFI arch 9, which no guest covers), that the
+  TFTP server serves each binary with the pinned sha256, and that the proxy still
+  hands a user-class boot URL — the stock-iPXE fallback the custom binaries no
+  longer depend on.
 
 Two modes: **local** (default) chains to a plain-HTTP stub served from the
 container — deterministic, and what CI runs; **live** chains to
-`${IPXE_SERVER_URL}` (the real Worker over HTTPS). Per-guest logs land in
-`lab/out/` (gitignored). CI runs BIOS + UEFI x86 in local mode on every PR that
-touches `bootstrap/` or `lab/` (`.github/workflows/boot-test.yml`).
+`${IPXE_SERVER_URL}` (the real Worker over HTTPS). Because the chain target is
+now compiled into the binary (`ARG IPXE_SERVER_URL` → the embedded script), not
+merely handed over DHCP, each mode rebuilds the bootstrap image with a matching
+`--build-arg IPXE_SERVER_URL`: the in-container stub (`http://10.77.0.1:8080`)
+for local, the live Worker for live. Per-guest logs land in `lab/out/`
+(gitignored). CI runs BIOS + UEFI x86 in local mode on every PR that touches
+`bootstrap/` or `lab/` (`.github/workflows/boot-test.yml`).
 
 **What it proves:** proxy/authoritative DHCP coexistence, DHCP arch detection
-(client-arch → tag → binary), TFTP integrity of the stock binaries, iPXE's
-user-class second DHCP and URL handoff, and the HTTP(S) chain to a rendered menu.
+(client-arch → tag → binary), TFTP integrity of the compiled binaries, iPXE's
+embedded chain reaching a rendered menu over HTTP(S), and — as a compatibility
+check — the proxy's user-class second-DHCP URL handoff for stock iPXE.
 
 **What it can't:** the *stage-1 fetch of the stock iPXE binary by a dumb firmware*
 is asserted at the DHCP/TFTP layer, not via a continuous guest boot — QEMU's own
