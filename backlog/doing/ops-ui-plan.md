@@ -24,3 +24,4 @@ Outcome: merge-ready PR.
 
 ---
 - 2026-07-07T02:48:48Z advanced to=doing claimer=fairchild@blue branch=main
+- 2026-07-07T03:14:24Z progress | PR=https://github.com/fairchild/services/pull/1072 delivered: /dashboard + /about + stats/detail APIs, 106 tests; screenshots ~/ipxe-ops-ui-screenshots reviewed, quality high; task stays in doing/ until review round dispositioned per Michael's protocol
