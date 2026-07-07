@@ -3,10 +3,10 @@ name: Build and Push
 on:
   push:
     branches: [main]
-    paths: [bootstrap/**]
+    paths: [bootstrap/**, build/**]
   pull_request:
     branches: [main]
-    paths: [bootstrap/**]
+    paths: [bootstrap/**, build/**]
   workflow_dispatch:
 
 env:
@@ -45,7 +45,8 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: ./bootstrap
+          context: .
+          file: bootstrap/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

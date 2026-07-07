@@ -1,3 +1,8 @@
-118cd292e07e926d8e7d91cc3b4f47917f7c42eb76823d1a43a89abc3716b638  undionly.kpxe
-de36a1073f515d7282a58a74fcf23d7ae35344754389c38f9118dbaca4eee590  ipxe.efi
-fee68c65fe37547acb7597b1ca4435eb8a3b80dc452a558b01799fc5bf02d629  ipxe-arm64.efi
+# Reference sha256s of the custom iPXE binaries. iPXE stamps build
+# metadata, so these are NOT bit-reproducible — supply-chain integrity
+# is enforced by the pinned upstream commit in build/compile-ipxe.sh,
+# not by these hashes. Regenerate with build/build.sh.
+693824b3d1248dcb307541b06cc642a7e0574534ea5906ad0211da7f7a684e55  undionly.kpxe
+237fefaca7500825e0216c5ca089652ade6b12a1fc4f2d88fae47843eef4e00a  ipxe.pxe
+f594cd2499b2f74949cc8750767e6d1006ac7fa6f8cd0739e46aeb840b588541  ipxe.efi
+04de92b1da5e751395a047b925fd62c1a88f0fc4aa71887a73681f13c459b1d9  ipxe-arm64.efi
