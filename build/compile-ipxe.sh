@@ -39,8 +39,14 @@ sed 's/^/    /' "${SRC_DIR}/src/embed.ipxe"
 
 # Enable HTTPS (pulls in TLS + the ECDSA/ECDHE/P-256/P-384 crypto that the
 # Google Trust Services chain needs — all on by default in iPXE's crypto.h).
+# NTP_CMD is required on RTC-less boards (Raspberry Pi): without a clock sync
+# the OCSP validity window can never bracket the firmware's bogus date and
+# every TLS handshake dies with "Stale (or premature) OCSP response" (022fe4).
 # Everything else stays at upstream defaults to keep the feature set minimal.
-echo "#define DOWNLOAD_PROTO_HTTPS" > "${SRC_DIR}/src/config/local/general.h"
+{
+  echo "#define DOWNLOAD_PROTO_HTTPS"
+  echo "#define NTP_CMD"
+} > "${SRC_DIR}/src/config/local/general.h"
 
 # Trusted root fingerprints. iPXE bakes in the SHA256 fingerprint of each cert
 # and trusts a chain the moment it reaches a *presented* cert whose fingerprint

@@ -2,7 +2,7 @@
 # metadata, so these are NOT bit-reproducible — supply-chain integrity
 # is enforced by the pinned upstream commit in build/compile-ipxe.sh,
 # not by these hashes. Regenerate with build/build.sh.
-693824b3d1248dcb307541b06cc642a7e0574534ea5906ad0211da7f7a684e55  undionly.kpxe
-237fefaca7500825e0216c5ca089652ade6b12a1fc4f2d88fae47843eef4e00a  ipxe.pxe
-f594cd2499b2f74949cc8750767e6d1006ac7fa6f8cd0739e46aeb840b588541  ipxe.efi
-04de92b1da5e751395a047b925fd62c1a88f0fc4aa71887a73681f13c459b1d9  ipxe-arm64.efi
+b6bb467f98b67727298666438acddb410291408ebd9e599f0931f88708d64d8c  undionly.kpxe
+b31a618eabea97fccdf5bb833f6ca30e6f0ca9dbb913199bc6ea69f27100ecce  ipxe.pxe
+72b3b089ea01ff2403bd4345c7e2e6d16048f299f8f52004252867e13893e804  ipxe.efi
+a02bb2d3d93b28fff28a5dd5c06035a5aa8c0bdde56a98e6d28e2def119feb9f  ipxe-arm64.efi
