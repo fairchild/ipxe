@@ -123,7 +123,19 @@ def cmd_set(path: Path, assignments: list[str]) -> None:
                 "Only existing variables can be edited in place — boot the Pi once "
                 "so the firmware writes its defaults, then patch."
             )
-        new = int(raw_value, 0).to_bytes(var.data_len, "little")
+        if raw_value.startswith("hex:"):
+            # Not everything worth editing is a scalar. BootOrder is an array of
+            # little-endian UINT16 boot-option numbers, and reordering it is how
+            # you stop the firmware running two full PXE timeouts before it
+            # looks at the SD card.
+            new = bytes.fromhex(raw_value[4:])
+            if len(new) != var.data_len:
+                raise SystemExit(
+                    f"{name}: hex value is {len(new)} bytes, variable is {var.data_len}. "
+                    "Only same-size edits are supported."
+                )
+        else:
+            new = int(raw_value, 0).to_bytes(var.data_len, "little")
         old = var.value(bytes(blob))
         if new == old:
             print(f"  {name} already {describe(name, old)} — unchanged")
@@ -142,13 +154,20 @@ def cmd_set(path: Path, assignments: list[str]) -> None:
         print(f"backup written to {backup}")
     path.write_bytes(bytes(blob))
 
-    verify = {v.name: v.value(path.read_bytes()) for v in parse(path.read_bytes()) if v.state == VAR_ADDED}
+    written = path.read_bytes()
+    verify = {v.name: v.value(written) for v in parse(written) if v.state == VAR_ADDED}
     for assignment in assignments:
         name, _, raw_value = assignment.partition("=")
-        want = int(raw_value, 0)
-        got = int.from_bytes(verify[name], "little")
+        got = verify[name]
+        want = (
+            bytes.fromhex(raw_value[4:])
+            if raw_value.startswith("hex:")
+            else int(raw_value, 0).to_bytes(len(got), "little")
+        )
         if want != got:
-            raise SystemExit(f"VERIFY FAILED: {name} reads {got}, expected {want}")
+            raise SystemExit(
+                f"VERIFY FAILED: {name} reads {got.hex()}, expected {want.hex()}"
+            )
     print(f"verified — {path} updated")
 
 
