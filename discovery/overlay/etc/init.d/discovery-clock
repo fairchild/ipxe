@@ -7,5 +7,10 @@ depend() {
 
 start() {
 	/usr/local/bin/discovery-clock
+	# Detached, and deliberately not an openrc service of its own: it has to
+	# keep reporting through a hang in a *later* sysinit service, which would
+	# block any service scheduled after it.
+	start-stop-daemon --start --background --exec /usr/local/bin/discovery-heartbeat \
+		2>/dev/null || /usr/local/bin/discovery-heartbeat &
 	return 0
 }

@@ -1,0 +1,50 @@
+#!/bin/sh
+# discovery-heartbeat — report which openrc service the boot is sitting in.
+#
+# A one-shot beacon per runlevel tells you the boot reached that runlevel. It
+# cannot tell you anything about a boot that never reaches the next one, which
+# is precisely the failure worth diagnosing: a single service that hangs with no
+# timeout holds its whole runlevel, and every later beacon with it.
+#
+# openrc already publishes the answer. /run/openrc/starting/ holds the services
+# currently being started and /run/openrc/started/ those that finished, so the
+# name of a hung service is a directory listing away. This loops in the
+# background from sysinit and beacons it, which turns "the boot stopped
+# somewhere" into "the boot is stuck in hwdrivers".
+#
+# Runs detached and never exits: it must outlive whatever hangs, since that is
+# the only case it exists for.
+
+set -u
+
+API_DEFAULT="https://ipxe.cloudcompute.com"
+INTERVAL="${HEARTBEAT_INTERVAL:-10}"
+
+api="$(sed -n 's/.*ipxe_api=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)"
+[ -n "$api" ] || api="$API_DEFAULT"
+# Plain http deliberately: this reports on boots where the clock may still be
+# wrong, and a heartbeat that needs TLS is silent exactly when it is needed.
+api="$(echo "${api%/}" | sed 's|^https:|http:|')"
+
+mac="$(cat /sys/class/net/eth0/address 2>/dev/null || echo unknown)"
+
+sanitize() {
+	# target must match ^[a-z0-9][a-z0-9._-]{0,63}$ server-side.
+	printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9._-' '-' | cut -c1-63
+}
+
+send() {
+	url="${api}/api/checkin?mac=${mac}&arch=$(uname -m)&target=$(sanitize "$1")&stage=$2"
+	wget -q -T 5 -O /dev/null "$url" 2>/dev/null || true
+}
+
+while true; do
+	starting="$(ls /run/openrc/starting 2>/dev/null | tr '\n' '.' | sed 's/\.$//')"
+	if [ -n "$starting" ]; then
+		send "$starting" stuck-in
+	else
+		count="$(ls /run/openrc/started 2>/dev/null | wc -l | tr -d ' ')"
+		send "started-${count:-0}" heartbeat
+	fi
+	sleep "$INTERVAL"
+done

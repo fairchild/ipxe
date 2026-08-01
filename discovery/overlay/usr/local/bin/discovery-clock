@@ -13,7 +13,7 @@ set -u
 log() { echo "[discovery-clock] $*" > /dev/console 2>/dev/null || true; echo "[discovery-clock] $*"; }
 
 for server in time.cloudflare.com pool.ntp.org; do
-	if ntpd -q -n -p "$server" >/dev/null 2>&1; then
+	if timeout 8 ntpd -q -n -p "$server" >/dev/null 2>&1; then
 		log "set from ntp $server: $(date -u)"
 		exit 0
 	fi
