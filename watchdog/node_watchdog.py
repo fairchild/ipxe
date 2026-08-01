@@ -706,7 +706,22 @@ def main(argv: list[str] | None = None) -> int:
         outlet = build_outlet(args)
         if not isinstance(outlet, MerossOutlet):
             raise SystemExit("--identify needs --arm plus MEROSS_HOST/MEROSS_KEY")
-        print(json.dumps(outlet.identify(), indent=2))
+        # Identify is the first thing anyone runs against a new plug, so it is
+        # also where a wrong key, a wrong address, and an offline device all
+        # first show up. A stack trace tells the operator nothing they can act
+        # on; name the likely cause instead.
+        try:
+            print(json.dumps(outlet.identify(), indent=2))
+        except OutletError as exc:
+            print(f"could not identify the outlet: {exc}", file=sys.stderr)
+            print(
+                "  A timeout usually means MEROSS_HOST is not a Meross device.\n"
+                "  A device that answers with method=ERROR is a Meross device\n"
+                "  rejecting the signature — MEROSS_KEY is wrong or empty.\n"
+                "  Recover the account key with watchdog/get-meross-key.py.",
+                file=sys.stderr,
+            )
+            return EXIT_MISCONFIGURED
         return EXIT_OK
 
     clock: Clock = VirtualClock() if args.fast else RealClock()
