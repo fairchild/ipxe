@@ -28,9 +28,16 @@ if [ ! -d "${OVERLAY_DIR}" ]; then
 	exit 1
 fi
 
-# The start script must be executable inside the tar or the local service skips
-# it. Enforce it here so a fresh checkout (which may lose the bit) still works.
+# Anything openrc or the local service executes must carry its exec bit inside
+# the tar, or it is silently skipped at boot with no error anywhere. Git does
+# preserve the bit, but a fresh checkout on a filesystem that does not (or an
+# unzip, or a copy through a FAT volume) loses it — and the failure mode is a
+# node that boots fine and simply never reports. Cheap to enforce here.
 chmod 0755 "${START_SCRIPT}"
+chmod 0755 "${OVERLAY_DIR}/usr/local/bin/discovery-beacon"
+for svc in "${OVERLAY_DIR}"/etc/init.d/*; do
+	[ -f "${svc}" ] && chmod 0755 "${svc}"
+done
 
 mkdir -p "${DIST_DIR}"
 rm -f "${OUT}"

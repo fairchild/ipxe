@@ -1,0 +1,7 @@
+#!/sbin/openrc-run
+description="Announce that userspace reached the boot runlevel"
+
+start() {
+	/usr/local/bin/discovery-beacon rc-boot
+	return 0
+}

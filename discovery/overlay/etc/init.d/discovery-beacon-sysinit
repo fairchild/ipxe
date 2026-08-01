@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+description="Announce that userspace reached sysinit"
+
+depend() {
+	# Ahead of modloop deliberately: modloop is the first thing in the boot that
+	# depends on the network working in userspace, so it is the most likely place
+	# to stall. A beacon after it would be silent for the failure we most expect.
+	before modloop
+}
+
+start() {
+	/usr/local/bin/discovery-beacon sysinit
+	return 0
+}

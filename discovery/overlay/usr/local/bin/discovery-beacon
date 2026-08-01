@@ -1,0 +1,72 @@
+#!/bin/sh
+# discovery-beacon — report that userspace reached a given boot stage.
+#
+# The discovery node is frequently a machine with no usable console: the Alpine
+# rpi kernel has no framebuffer driver compiled in (vc4 is a module, and modules
+# live in modloop), so HDMI stays dark from "Exiting boot services" until well
+# into userspace. If the boot stalls before then, the screen never lights up and
+# the machine looks identical to one that was never powered on.
+#
+# So each runlevel announces itself over the network instead. The Worker already
+# records boot events from iPXE via the same endpoint; these extend that trail
+# past the point where iPXE hands off, which is exactly where visibility used to
+# stop.
+#
+# Every failure here is non-fatal by construction. A beacon that wedges sysinit
+# would be strictly worse than the blindness it is meant to cure.
+#
+# Usage: discovery-beacon <stage>
+
+set -u
+
+STAGE="${1:?usage: discovery-beacon <stage>}"
+API_DEFAULT="https://ipxe.cloudcompute.com"
+TIMEOUT=5
+
+cmdline_value() {
+	key="$1"
+	# shellcheck disable=SC2013
+	for tok in $(cat /proc/cmdline 2>/dev/null); do
+		case "$tok" in
+			"$key"=*) echo "${tok#*=}"; return 0 ;;
+		esac
+	done
+	return 1
+}
+
+if [ -z "${IPXE_API:-}" ]; then
+	IPXE_API="$(cmdline_value ipxe_api || true)"
+fi
+[ -n "${IPXE_API:-}" ] || IPXE_API="$API_DEFAULT"
+IPXE_API="${IPXE_API%/}"
+
+primary_mac() {
+	if [ -r /sys/class/net/eth0/address ]; then
+		cat /sys/class/net/eth0/address
+		return 0
+	fi
+	for dev in /sys/class/net/*; do
+		name="${dev##*/}"
+		[ "$name" = "lo" ] && continue
+		[ -r "$dev/address" ] || continue
+		cat "$dev/address"
+		return 0
+	done
+	echo unknown
+}
+
+mac="$(primary_mac)"
+arch="$(uname -m)"
+url="${IPXE_API}/api/checkin?mac=${mac}&arch=${arch}&target=discovery&stage=${STAGE}"
+
+# busybox wget is the only fetcher guaranteed present this early — curl and the
+# apk-installed tools arrive later, if at all. Call it through the busybox
+# multiplexer so a missing applet symlink doesn't matter.
+if command -v wget >/dev/null 2>&1; then
+	wget -q -T "$TIMEOUT" -O /dev/null "$url" 2>/dev/null || true
+elif command -v busybox >/dev/null 2>&1; then
+	busybox wget -q -T "$TIMEOUT" -O /dev/null "$url" 2>/dev/null || true
+fi
+
+echo "[discovery-beacon] $STAGE mac=$mac" > /dev/console 2>/dev/null || true
+exit 0
