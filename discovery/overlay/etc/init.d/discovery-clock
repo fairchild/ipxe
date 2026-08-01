@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+description="Set the clock before anything attempts TLS"
+
+depend() {
+	before modloop discovery-beacon-sysinit
+}
+
+start() {
+	/usr/local/bin/discovery-clock
+	return 0
+}
