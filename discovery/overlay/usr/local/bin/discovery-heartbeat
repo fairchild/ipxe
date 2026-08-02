@@ -175,6 +175,11 @@ while true; do
 	power="$(power_tokens)"
 	health="$power"
 	[ -n "$temp" ] && health="_t${temp}${power}"
+	# The latch covers one interval, and clearing it here is what lets a supply
+	# that has recovered ever be seen: a latch that only cleared on a report
+	# could never produce the change that triggers the report.
+	saw_uv=0
+	saw_thr=0
 
 	starting="$(ls /run/openrc/starting 2>/dev/null | tr '\n' '.' | sed 's/\.$//')"
 	if [ -n "$starting" ]; then
@@ -226,9 +231,14 @@ while true; do
 		last_power="$power"
 		last_temp="$temp"
 		last_sent_at="$now"
-		# The latch covers the window since the last report, not since boot.
-		saw_uv=0
-		saw_thr=0
+	elif [ "$health_changed" = 1 ]; then
+		# Something new, held back by the floor: carry it into the next
+		# interval rather than dropping a brown-out because it happened during
+		# a quiet period. Only when it is new — carrying an already-reported
+		# state forward would make the latch monotone again, and a supply that
+		# recovered would never be seen to.
+		case "$power" in *_uv*) saw_uv=1 ;; esac
+		case "$power" in *_thr*) saw_thr=1 ;; esac
 	fi
 	wait_and_sample
 done
