@@ -103,23 +103,39 @@ rather than clobbering the row.
 
 ## What the node reports while it boots
 
-The check-in endpoint (`/api/checkin?mac=&arch=&target=&stage=`) is the only
-channel a headless node has, so everything rides it. `discovery-beacon` fires
-once per runlevel — `stage=sysinit`, `rc-boot`, `rc-default` — which proves the
-boot got that far. `discovery-heartbeat` runs from sysinit onwards and answers
-the question a per-runlevel beacon cannot: what is it sitting in *now*. It reads
-`/run/openrc/starting`, and sends `stage=starting` while a service is starting,
-`stage=stuck-in` once the same one has persisted across samples, and
+The check-in endpoint (`/api/checkin?mac=&arch=&target=&stage=&detail=`) is the
+only channel a headless node has, so everything rides it. `discovery-beacon`
+fires once per runlevel — `stage=sysinit`, `rc-boot`, `rc-default` — which proves
+the boot got that far. `discovery-heartbeat` runs from sysinit onwards and
+answers the question a per-runlevel beacon cannot: what is it sitting in *now*.
+It reads `/run/openrc/starting`, and sends `stage=starting` while a service is
+starting, `stage=stuck-in` once the same one has persisted across samples, and
 `stage=heartbeat` with a count of started services when nothing is in flight.
 
-Board health rides the same report rather than a channel of its own. `target`
-carries the openrc state, then the health tokens after an `_`:
+`target` always stays `discovery` — it names the *image* that is booting, and
+the Worker filters the boot log by it to find discovery boots. Everything the
+node knows and the Worker cannot derive goes in `detail`: the openrc state, how
+long this boot has been running, how long it has been reporting the same thing,
+and the board's health.
 
 ```
-target=modloop_t58_pwr-ok      starting modloop, 58 C, supply fine
-target=started-14_t71_uv_thr   idle, 71 C, under-voltage and throttling
-target=started-14_t44          x86: a temperature, no firmware to ask
+detail=<state>_up<uptime>_for<held>[_t<degC>][_uv][_thr][_pwr-ok]
+
+modloop_up95_for30_t58_pwr-ok      95 s in, 30 s starting modloop, 58 C, supply fine
+started-14_up3600_for3400_t71_uv_thr  idle an hour, 71 C, under-voltage and throttling
+started-14_up600_for580_t44        x86: a temperature, no firmware to ask
 ```
+
+`up` is the load-bearing field. It is what lets the Worker anchor on when the
+boot started rather than on when the node last spoke, which is the difference
+between "still talking, therefore fine" and "still talking, and stuck for fifty
+minutes". `/proc/uptime` is also the only clock worth quoting from an RTC-less
+board mid-boot: monotonic, and right on the first tick.
+
+This used to live in `target`, which meant every heartbeat arrived claiming to
+be a boot of an image called `networking_t45_uv` — so the Worker's target filter
+discarded exactly the reports that mattered, and a permanently wedged node was
+the one thing the fleet dashboard could not see.
 
 Under-voltage is the Pi's signature failure and it presents as everything being
 slightly wrong rather than as an error, which makes it expensive to chase from
