@@ -1,2 +1,7 @@
 cache/
 dist/
+# The operator ssh key is a build input (see build-overlay.sh) and the staging
+# directory it is copied into. Neither belongs in the tree: the key is supplied
+# and rotated locally, and a stale copy in git would outlive the rotation.
+authorized_keys
+overlay/root/

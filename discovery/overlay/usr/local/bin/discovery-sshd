@@ -1,0 +1,91 @@
+#!/bin/sh
+# discovery-sshd — put an operator shell on the discovery node.
+#
+# The node runs entirely in RAM from a base image with no ssh server, so until
+# now the only shell was the getty on tty1 — and the machines this boots most
+# often are headless, or (on the Pi under Alpine's kernel) have a console that
+# stays dark until well into userspace. Every diagnostic then has to be inferred
+# from the check-in feed. dropbear closes that gap for the price of one package.
+#
+# dropbear rather than openssh: it is one small package with no separate keygen
+# package to fetch, and `-R` mints host keys on demand, which is what an
+# ephemeral node wants — there is nowhere to persist a host key, so each boot
+# gets fresh ones. (Expect ssh's changed-host-key warning; see the README.)
+#
+# Everything here is best effort and bounded. The package comes from the mirror
+# the boot was given on the kernel cmdline, over plain http, and a fetch that
+# hangs must not be able to take the runlevel — or registration — with it. A
+# node with no ssh is worth booting; a node that never registers is not.
+#
+# POSIX sh (busybox ash) only. No bashisms.
+
+set -u
+
+KEYS=/root/.ssh/authorized_keys
+PIDFILE=/run/dropbear.pid
+APK_TIMEOUT="${SSHD_APK_TIMEOUT:-60}"
+APK_TRIES="${SSHD_APK_TRIES:-3}"
+RETRY_SLEEP="${SSHD_RETRY_SLEEP:-15}"
+
+log() {
+	msg="[discovery-sshd] $*"
+	echo "$msg" > /dev/console 2>/dev/null || true
+	echo "$msg"
+	logger -t discovery-sshd "$*" 2>/dev/null || true
+}
+
+beacon() {
+	[ -x /usr/local/bin/discovery-beacon ] || return 0
+	/usr/local/bin/discovery-beacon "$1" >/dev/null 2>&1 || true
+}
+
+# No key, no daemon. The overlay is the only thing that grants access here, so
+# an empty authorized_keys means an unreachable node, not an open one.
+if [ ! -s "$KEYS" ]; then
+	log "no authorized key in the overlay; not starting sshd"
+	exit 0
+fi
+
+if [ -e "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+	exit 0
+fi
+
+install_dropbear() {
+	command -v dropbear >/dev/null 2>&1 && return 0
+	i=1
+	while [ "$i" -le "$APK_TRIES" ]; do
+		# Bounded on both axes: apk holds an exclusive database lock and
+		# discovery.start is adding curl/jq on the same node, so this can be
+		# waiting on a peer rather than on the network — and either way an
+		# unbounded wait here is a background process that never finishes.
+		if timeout "$APK_TIMEOUT" apk add --no-cache dropbear >/dev/null 2>&1; then
+			return 0
+		fi
+		log "apk add dropbear failed (attempt ${i}/${APK_TRIES})"
+		i=$((i + 1))
+		[ "$i" -le "$APK_TRIES" ] && sleep "$RETRY_SLEEP"
+	done
+	return 1
+}
+
+if ! install_dropbear; then
+	log "dropbear unavailable; no ssh on this boot"
+	beacon sshd-absent
+	exit 0
+fi
+
+mkdir -p /etc/dropbear
+
+# -s refuses password authentication outright: root on this image has no
+# password at all, so the overlay's key is the only way in and should be the
+# only one offered. -R generates the host keys this boot will use.
+if dropbear -R -s -P "$PIDFILE" 2>/dev/null; then
+	addr="$(ip -4 addr show 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | grep -v '^127\.' | head -1)"
+	log "ssh ready: ssh root@${addr:-<node>}"
+	beacon sshd-up
+else
+	log "dropbear failed to start; no ssh on this boot"
+	beacon sshd-failed
+fi
+
+exit 0

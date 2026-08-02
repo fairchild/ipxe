@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+description="Bring up an ssh shell on the discovery node"
+
+depend() {
+	# Ordering only, never `need`: a node that cannot start sshd must still
+	# boot and register. Deliberately in the default runlevel and after local,
+	# because sshd's package has to be fetched — putting a network fetch in
+	# sysinit is what stalled this boot for a day. The runlevel where a stall
+	# is most likely is the one where the heartbeat, not ssh, is the diagnostic.
+	after net local
+}
+
+start() {
+	# Detached: fetching dropbear from the mirror can be slow or hopeless, and
+	# neither outcome should hold the runlevel behind it.
+	start-stop-daemon --start --background --exec /usr/local/bin/discovery-sshd \
+		2>/dev/null || /usr/local/bin/discovery-sshd &
+	return 0
+}
