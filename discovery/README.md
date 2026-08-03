@@ -58,7 +58,7 @@ The Worker serves the overlay from R2 at
 `/discovery/discovery.apkovl.tar.gz`. Publish a freshly built overlay with:
 
 ```bash
-wrangler r2 object put ipxe-boot-assets/discovery/discovery.apkovl.tar.gz \
+./build-overlay.sh && wrangler r2 object put ipxe-boot-assets/discovery/discovery.apkovl.tar.gz \
   --file dist/discovery.apkovl.tar.gz --content-type application/gzip
 ```
 
@@ -230,3 +230,8 @@ x86_64 only for now. arm64 is a follow-up: add an `aarch64` netboot distro entry
 (`alpineArch: "aarch64"`) and verify under `qemu-system-aarch64 -M virt`. The
 start script is already arch-agnostic (it reads `uname -m` and handles the arm
 DMI/`/proc/cpuinfo` differences).
+
+> **Build before you upload.** `dist/` is gitignored, so it can trivially be older than
+> `overlay/`. The node and the Worker share a wire format — the heartbeat's `detail` field is
+> parsed by the Worker's stall detector — so publishing a stale tarball ships a node the Worker
+> can no longer read, with every test still green on both sides.
