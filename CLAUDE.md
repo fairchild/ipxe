@@ -43,6 +43,24 @@ largest. Four other directories carry work a cold reader will otherwise miss:
   `backlog/doing/STATE.md`, which is the fastest path back into context after a
   break. Read it before planning anything.
 
+### This repo is public
+
+`fairchild/ipxe` is a public repository, and the lab notes in `backlog/` are the
+easiest place to forget it. **No LAN addresses, Tailscale addresses, real MAC
+addresses, hostnames, serial numbers, or credentials in committed files** —
+including in a handoff document that only you expect to read. Write the role
+instead (`<relay>`, `<node>`, "the plug's outlet channel"); the actual values
+belong in `~/.config/ipxe-lab.env`, which is outside the tree and holds
+`MEROSS_HOST`, `MEROSS_KEY`, `MEROSS_CHANNEL` and `DASHBOARD_TOKEN` already.
+
+Example MACs in docs and tests should stay obviously fake — `52:54:00:…` is
+QEMU's OUI, and `watchdog/` uses `dc:a6:32:11:22:33`. `discovery/authorized_keys`
+is gitignored on purpose and must stay that way: the built overlay is published
+to a world-readable bucket.
+
+Worth internalising rather than checking at commit time: git history is public
+too, so a scrub in a later commit narrows exposure but never undoes it.
+
 ### The cross-repo wire contract
 
 The node and the Worker share a contract that nothing tests: the heartbeat's

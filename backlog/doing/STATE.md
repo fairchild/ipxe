@@ -101,7 +101,7 @@ transition is not real until a GET agrees. During this session a SET landed
 whose ACK was lost, and the read-back is the only reason we knew the Pi was
 powered off rather than crashed.
 
-When the node is *healthy*, `ssh -J orin root@192.168.8.157 reboot` is far more
+When the node is *healthy*, `ssh -J <relay> root@<node> reboot` is far more
 reliable than the plug and re-runs the whole netboot chain — a RAM node loses
 nothing. Reserve the plug for when the node is wedged, which is also the only
 time it is indispensable.
@@ -137,17 +137,21 @@ time it is indispensable.
 
 ## Operational facts worth not rediscovering
 
-- Remote control path: Tailscale → `orin` (100.121.24.73, LAN 192.168.8.107) →
-  Meross plug 192.168.8.106, **channel 2 is the Pi**. `MEROSS_*` and
-  `DASHBOARD_TOKEN` in `~/.config/ipxe-lab.env` (mode 600).
+- Remote control path: Tailscale → a LAN relay host → the Meross plug, on the
+  outlet channel the node is wired to. **This repo is public, so the addresses,
+  hostnames and channel number stay out of it** — they live with the credentials
+  in `~/.config/ipxe-lab.env` (mode 600), which is where `MEROSS_HOST`,
+  `MEROSS_KEY`, `MEROSS_CHANNEL` and `DASHBOARD_TOKEN` already are. Source it
+  with `set -a; . ~/.config/ipxe-lab.env; set +a` and every command below works
+  without a specific appearing in a commit.
 - `watchdog/node_watchdog.py` already does both hard parts correctly — it reads
-  the `System.All` digest and verifies by default. Use it. `orin:/tmp/pwr.py` is
-  an old scratch script that only SETs and never reads back; it is the one that
-  produced false conclusions, and it is worth deleting rather than fixing.
-- The node takes ssh at `root@192.168.8.157` via `-J orin`, using the key in
-  `discovery/authorized_keys` (gitignored build input, currently
-  `id_ed25519.pub`). Without that file dropbear declines to start — fails
-  closed.
+  the `System.All` digest and verifies by default. Use it, and run it from the
+  relay: the plug is not routable from outside the LAN. An older scratch script
+  that only SET and never read back is what produced false conclusions; delete
+  any copy you find rather than fixing it.
+- The node takes ssh as `root` via `-J <relay>`, using the key in
+  `discovery/authorized_keys` (gitignored build input). Without that file
+  dropbear declines to start — fails closed.
 - Cold boot to healthy heartbeat is ~45 seconds: menu → iPXE boot → sysinit at
   up17 → rc-default at up30 → sshd-up at up37 → heartbeat at up42.
 - `wrangler tail --env production --format json` is the instrument that does not
