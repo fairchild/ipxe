@@ -15,10 +15,15 @@ or sits polling.
 discovery/
   overlay/                       the apkovl filesystem (rooted at "/")
     etc/local.d/discovery.start  inventory + register + poll (the whole brain)
+    usr/local/bin/discovery-*    clock, beacon, heartbeat, sshd
+    etc/init.d/discovery-*       openrc units for those
+    etc/runlevels/*/             symlinks enabling each of them
     etc/runlevels/default/local  symlink enabling the local service
     etc/runlevels/boot/*         networking + hostname enablement
     etc/network/interfaces       eth0 via dhcp
     etc/hostname                 "discovery"
+    root/.ssh/authorized_keys    staged at build time (gitignored)
+  authorized_keys                the operator key to embed (gitignored)
   build-overlay.sh               packs overlay/ into dist/discovery.apkovl.tar.gz
   dist/                          build output (gitignored except as noted)
   cache/                         QEMU kernel/initrd cache (gitignored)
@@ -33,6 +38,7 @@ runlevel.
 ## Build
 
 ```bash
+cp ~/.ssh/id_ed25519.pub discovery/authorized_keys   # optional; see "Shell access"
 ./build-overlay.sh
 # -> dist/discovery.apkovl.tar.gz
 ```
@@ -40,13 +46,19 @@ runlevel.
 Pure POSIX/bsdtar; no Alpine or Docker needed to build. The start script is
 validated with `shellcheck -s sh`.
 
+The ssh key is a build input rather than a file in the tree — the artifact goes
+to a public bucket, and a key that opens every discovery node should be rotatable
+with a `cp` instead of a commit. `AUTHORIZED_KEYS=/path/to/key.pub` overrides the
+default location. With no key the overlay simply ships none and the node boots
+without ssh.
+
 ## Upload (to the Worker's R2 bucket)
 
 The Worker serves the overlay from R2 at
 `/discovery/discovery.apkovl.tar.gz`. Publish a freshly built overlay with:
 
 ```bash
-wrangler r2 object put ipxe-boot-assets/discovery/discovery.apkovl.tar.gz \
+./build-overlay.sh && wrangler r2 object put ipxe-boot-assets/discovery/discovery.apkovl.tar.gz \
   --file dist/discovery.apkovl.tar.gz --content-type application/gzip
 ```
 
@@ -88,6 +100,87 @@ its SHA-256 hash is stored server-side, so the plaintext lives only in the
 machine's tmpfs. On reboot the machine re-registers by MAC; a machine that lost
 its token to a stale registration gets a 409 and idles with a clear message
 rather than clobbering the row.
+
+## What the node reports while it boots
+
+The check-in endpoint (`/api/checkin?mac=&arch=&target=&stage=&detail=`) is the
+only channel a headless node has, so everything rides it. `discovery-beacon`
+fires once per runlevel — `stage=sysinit`, `rc-boot`, `rc-default` — which proves
+the boot got that far. `discovery-heartbeat` runs from sysinit onwards and
+answers the question a per-runlevel beacon cannot: what is it sitting in *now*.
+It reads `/run/openrc/starting`, and sends `stage=starting` while a service is
+starting, `stage=stuck-in` once the same one has persisted across samples, and
+`stage=heartbeat` with a count of started services when nothing is in flight.
+
+`target` always stays `discovery` — it names the *image* that is booting, and
+the Worker filters the boot log by it to find discovery boots. Everything the
+node knows and the Worker cannot derive goes in `detail`: the openrc state, how
+long this boot has been running, how long it has been reporting the same thing,
+and the board's health.
+
+```
+detail=<state>_up<uptime>_for<held>[_t<degC>][_uv][_thr][_pwr-ok]
+
+modloop_up95_for30_t58_pwr-ok      95 s in, 30 s starting modloop, 58 C, supply fine
+started-14_up3600_for3400_t71_uv_thr  idle an hour, 71 C, under-voltage and throttling
+started-14_up600_for580_t44        x86: a temperature, no firmware to ask
+```
+
+`up` is the load-bearing field. It is what lets the Worker anchor on when the
+boot started rather than on when the node last spoke, which is the difference
+between "still talking, therefore fine" and "still talking, and stuck for fifty
+minutes". `/proc/uptime` is also the only clock worth quoting from an RTC-less
+board mid-boot: monotonic, and right on the first tick.
+
+This used to live in `target`, which meant every heartbeat arrived claiming to
+be a boot of an image called `networking_t45_uv` — so the Worker's target filter
+discarded exactly the reports that mattered, and a permanently wedged node was
+the one thing the fleet dashboard could not see.
+
+Under-voltage is the Pi's signature failure and it presents as everything being
+slightly wrong rather than as an error, which makes it expensive to chase from
+the outside. It comes from the firmware — the raw throttle word on kernels that
+still expose `get_throttled`, otherwise the `rpi_volt` hwmon device's
+under-voltage alarm, which is what a mainline aarch64 kernel offers. Neither is
+a record of the whole boot: `raspberrypi-hwmon` polls the firmware every two
+seconds and clears the sticky bits as it goes, so each read describes about the
+last two seconds. The heartbeat therefore samples the power bits far faster than
+it reports them and latches what it saw — the reads are local files, and only
+reporting costs requests.
+
+Reporting stays deliberately quiet: one instance (pidfile), a report only when
+something changes, a keepalive every five minutes otherwise, and a floor between
+health-driven reports so a supply flapping in and out of brown-out cannot become
+its own flood. Temperature reports on movement rather than on value, so a
+reading resting on a boundary never oscillates. An earlier heartbeat put ~2
+requests/second into an endpoint that rate-limits at 60/min; do not regress it.
+
+## Shell access
+
+`discovery-sshd` puts dropbear on the node, so it is a machine an operator can
+log into rather than one that can only be inferred from telemetry:
+
+```bash
+ssh root@<node-ip>    # key-only; the key you built into the overlay
+```
+
+dropbear rather than openssh: one small package, no separate keygen package to
+fetch, and `-R` mints host keys on demand — which suits a node with nowhere to
+persist them. Each boot therefore has new host keys, so expect ssh's
+changed-host-key warning on a re-boot of the same machine.
+
+Everything about it is bounded and fails soft, because it necessarily runs at
+boot on a RAM node: dropbear is not in the base image, so it comes from the
+plain-http mirror on the kernel cmdline. `apk` is wrapped in `timeout` and
+retried a bounded number of times, the whole script is detached by its openrc
+unit so a slow mirror cannot hold the runlevel, and it sits in the *default*
+runlevel after `local` — a network fetch in sysinit is what cost this project a
+day, and the runlevel where a stall is most likely is the one where the
+heartbeat, not ssh, is the diagnostic. Registration is the node's job; ssh is a
+convenience, and it is wired so it can never come first.
+
+With no key staged into the overlay the script logs that fact and exits without
+starting a daemon: a node nobody can log into beats a node anybody can.
 
 ## Verify with QEMU
 
@@ -137,3 +230,8 @@ x86_64 only for now. arm64 is a follow-up: add an `aarch64` netboot distro entry
 (`alpineArch: "aarch64"`) and verify under `qemu-system-aarch64 -M virt`. The
 start script is already arch-agnostic (it reads `uname -m` and handles the arm
 DMI/`/proc/cpuinfo` differences).
+
+> **Build before you upload.** `dist/` is gitignored, so it can trivially be older than
+> `overlay/`. The node and the Worker share a wire format — the heartbeat's `detail` field is
+> parsed by the Worker's stall detector — so publishing a stale tarball ships a node the Worker
+> can no longer read, with every test still green on both sides.

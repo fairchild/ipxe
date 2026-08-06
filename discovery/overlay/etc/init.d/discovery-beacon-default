@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+description="Announce that userspace reached the default runlevel"
+
+depend() {
+	# local runs discovery.start; this fires first so a beacon still lands even
+	# if registration itself is what breaks.
+	before local
+}
+
+start() {
+	/usr/local/bin/discovery-beacon rc-default
+	return 0
+}

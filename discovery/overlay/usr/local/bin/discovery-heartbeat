@@ -1,0 +1,283 @@
+#!/bin/sh
+# discovery-heartbeat — report which openrc service the boot is sitting in, and
+# how the board itself is doing while it sits there.
+#
+# A one-shot beacon per runlevel proves the boot reached that runlevel and says
+# nothing about a boot that never reaches the next one — which is exactly the
+# failure worth diagnosing. openrc publishes the answer: /run/openrc/starting
+# holds what is currently starting, /run/openrc/started what finished, so a
+# directory listing names a hung service.
+#
+# The same tick carries core temperature and the Pi's throttle/under-voltage
+# state. Under-voltage is the board's signature failure — a marginal supply
+# browns out under load and the symptom surfaces anywhere but the supply — and
+# it is otherwise invisible without a console. It rides along with the openrc
+# state in one field rather than in a report of its own, so a node that is both
+# stuck and browning out still costs one request to say so.
+#
+# That field is `detail`, not `target`. An earlier version packed the openrc
+# state into `target` — the field that says which *image* is booting — so every
+# heartbeat arrived claiming to be a boot of a distro called
+# `networking_t45_uv`. The Worker filters the boot log by target to find
+# discovery boots, so the reports that mattered most were the ones it discarded,
+# and a permanently wedged node was the one thing the fleet dashboard could not
+# see. `target` now stays `discovery`, matching what discovery-beacon has always
+# sent, and everything the node knows and we cannot derive goes in `detail`:
+#
+#   detail = <state>_up<uptime>_for<held>[_t<degC>][_uv][_thr][_pwr-ok]
+#
+# `up` is the load-bearing one. It is what lets a reader anchor on when this
+# boot started rather than on when the node last spoke, which is the difference
+# between "still talking, therefore fine" and "still talking, and has been
+# stuck for fifty minutes". /proc/uptime is also the only clock worth quoting
+# from an RTC-less board mid-boot: monotonic, and right on the first tick.
+#
+# Reporting discipline matters as much as the signal. The first version of this
+# sent a sample every tick from however many copies of itself were running, and
+# put ~2 requests/second into a check-in endpoint that rate-limits at 60/min and
+# keeps events for 90 days. It buried the boot feed and burned the quota it
+# needed. So: one instance only, report on change, and a slow keepalive
+# otherwise. Health changes are additionally floored at HEALTH_MIN_GAP — a
+# supply flapping in and out of brown-out must not become its own flood, while
+# boot-state changes still report the moment they happen.
+
+set -u
+
+API_DEFAULT="https://ipxe.cloudcompute.com"
+INTERVAL="${HEARTBEAT_INTERVAL:-10}"          # how often to look
+KEEPALIVE="${HEARTBEAT_KEEPALIVE:-300}"       # max seconds between reports when idle
+STUCK_AFTER="${HEARTBEAT_STUCK_AFTER:-3}"     # same service this many samples = stuck
+POWER_SAMPLE="${HEARTBEAT_POWER_SAMPLE:-2}"   # how often to look at the power bits
+HEALTH_MIN_GAP="${HEARTBEAT_HEALTH_GAP:-60}"  # min seconds between health-driven reports
+TEMP_DELTA="${HEARTBEAT_TEMP_DELTA:-5}"       # degrees C of movement worth a report
+# The boot target this overlay belongs to. Same value discovery-beacon sends, so
+# every userspace report from a discovery node lands under the target the Worker
+# recognises as a discovery boot.
+TARGET="${HEARTBEAT_TARGET:-discovery}"
+LOCK=/run/discovery-heartbeat.pid
+
+# One instance. Without this, anything that starts the service twice doubles the
+# request rate permanently, and nothing on a RAM node ever cleans it up.
+if [ -e "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+	exit 0
+fi
+echo $$ > "$LOCK" 2>/dev/null || true
+
+api="$(sed -n 's/.*ipxe_api=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)"
+[ -n "$api" ] || api="$API_DEFAULT"
+# Plain http deliberately: this reports on boots whose clock may still be wrong,
+# and a diagnostic that needs TLS is silent exactly when it is needed.
+api="$(echo "${api%/}" | sed 's|^https:|http:|')"
+mac="$(cat /sys/class/net/eth0/address 2>/dev/null || echo unknown)"
+
+sanitize() {
+	# "_" is the delimiter between the openrc state and every token appended
+	# after it, so fold it away here along with everything else the endpoint's
+	# token pattern rejects. Truncation length is a parameter because the state
+	# is the only variable-length part and has to leave room for the rest.
+	width="$2"
+	[ "$width" -ge 1 ] || width=1
+	printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9.-' '-' | cut -c1-"$width"
+}
+
+send() {
+	state="$1"; health="$2"; stage="$3"; uptime="$4"; held="$5"
+	# 64 characters total for a token, so budget the fixed-width tail first and
+	# give the state whatever is left. Losing the end of a long service name
+	# still leaves it identifiable; losing the uptime loses the whole report.
+	tail="_up${uptime}_for${held}${health}"
+	detail="$(sanitize "$state" $((63 - ${#tail})))${tail}"
+	wget -q -T 5 -O /dev/null \
+		"${api}/api/checkin?mac=${mac}&arch=$(uname -m)&target=${TARGET}&stage=${stage}&detail=${detail}" \
+		2>/dev/null || true
+}
+
+# ---- board health ------------------------------------------------------------
+#
+# Every read below is optional: this overlay also boots x86_64 machines, where
+# the firmware interface does not exist and a missing file is the normal case.
+#
+# Two sources, in preference order:
+#   /sys/devices/platform/.../get_throttled  the raw firmware word, in hex, on
+#     Raspberry Pi kernels that still carry the attribute (upstream dropped it;
+#     downstream keeps it marked deprecated). Carries under-voltage, frequency
+#     capping and throttling, each as a live bit and a sticky bit.
+#   hwmon "rpi_volt" / in0_lcrit_alarm       under-voltage alone, as a 0/1
+#     alarm. This is upstream's replacement, so it is what a mainline aarch64
+#     kernel offers.
+#
+# Neither is a record of the boot: raspberrypi-hwmon polls the firmware every
+# two seconds and asks it to clear the sticky bits as it goes, so both sources
+# describe roughly the last two seconds. Sampling once per report interval would
+# therefore miss most of a brown-out. Hence the sampler runs on its own faster
+# cadence and latches what it saw until the next report — the reads are local
+# files, and only reporting costs requests.
+
+core_temp_c() {
+	t="$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)" || return 0
+	case "$t" in ''|*[!0-9]*) return 0 ;; esac
+	c=$((t / 1000))
+	# A zone reporting in some other unit is worse than no reading at all.
+	[ "$c" -gt 0 ] && [ "$c" -lt 150 ] && echo "$c"
+}
+
+throttle_word() {
+	for f in /sys/devices/platform/soc/soc:firmware/get_throttled \
+		/sys/devices/platform/*firmware*/get_throttled; do
+		[ -r "$f" ] || continue
+		w="$(cat "$f" 2>/dev/null)"
+		case "$w" in ''|*[!0-9a-fA-F]*) continue ;; esac
+		echo "$w"
+		return 0
+	done
+	return 1
+}
+
+undervolt_alarm() {
+	for h in /sys/class/hwmon/hwmon*; do
+		[ "$(cat "$h/name" 2>/dev/null)" = rpi_volt ] || continue
+		cat "$h/in0_lcrit_alarm" 2>/dev/null
+		return 0
+	done
+	return 1
+}
+
+saw_uv=0
+saw_thr=0
+have_power=0
+
+sample_power() {
+	w="$(throttle_word || true)"
+	if [ -n "$w" ]; then
+		have_power=1
+		v=$((0x$w))
+		# Bit 0 under-voltage now, bit 16 under-voltage since the last clear;
+		# bits 1 and 2 arm frequency capped / currently throttled, 17 and 18
+		# the same two since the last clear.
+		[ $((v & 0x10001)) -ne 0 ] && saw_uv=1
+		[ $((v & 0x60006)) -ne 0 ] && saw_thr=1
+		return 0
+	fi
+	a="$(undervolt_alarm || true)"
+	if [ -n "$a" ]; then
+		have_power=1
+		if [ "$a" = 1 ]; then saw_uv=1; fi
+	fi
+	return 0
+}
+
+power_tokens() {
+	[ "$have_power" = 1 ] || return 0
+	if [ "$saw_uv" = 1 ] || [ "$saw_thr" = 1 ]; then
+		[ "$saw_uv" = 1 ] && printf '_uv'
+		[ "$saw_thr" = 1 ] && printf '_thr'
+		return 0
+	fi
+	# Distinct from "no tokens at all", which means the board has no firmware to
+	# ask — a silent field and a healthy one must not read the same.
+	printf '_pwr-ok'
+}
+
+wait_and_sample() {
+	remaining="$INTERVAL"
+	while [ "$remaining" -gt 0 ]; do
+		sample_power
+		sleep "$POWER_SAMPLE"
+		remaining=$((remaining - POWER_SAMPLE))
+	done
+}
+
+# ---- main loop ---------------------------------------------------------------
+
+last_report=""
+last_power=""
+last_temp=""
+last_sent_at=0
+same_count=0
+prev=""
+# When the report we are currently observing first appeared, in uptime seconds.
+# Tracked separately from last_sent_at: how long the boot has been sitting where
+# it is has to survive the reporting throttle, or a node that has been wedged for
+# an hour would claim it had been wedged for the length of one keepalive.
+held_report=""
+held_since=0
+
+while true; do
+	uptime="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)"
+	sample_power
+	temp="$(core_temp_c)"
+	power="$(power_tokens)"
+	health="$power"
+	[ -n "$temp" ] && health="_t${temp}${power}"
+	# The latch covers one interval, and clearing it here is what lets a supply
+	# that has recovered ever be seen: a latch that only cleared on a report
+	# could never produce the change that triggers the report.
+	saw_uv=0
+	saw_thr=0
+
+	starting="$(ls /run/openrc/starting 2>/dev/null | tr '\n' '.' | sed 's/\.$//')"
+	if [ -n "$starting" ]; then
+		if [ "$starting" = "$prev" ]; then
+			same_count=$((same_count + 1))
+		else
+			same_count=1
+		fi
+		prev="$starting"
+		# Only call it stuck once it has persisted. A healthy boot is always
+		# "starting" something, and reporting that as stuck cries wolf on every
+		# successful boot — which the first version did.
+		if [ "$same_count" -ge "$STUCK_AFTER" ]; then
+			report="stuck-in:${starting}"
+		else
+			report="starting:${starting}"
+		fi
+	else
+		prev=""
+		same_count=0
+		report="started-$(ls /run/openrc/started 2>/dev/null | wc -l | tr -d ' ')"
+	fi
+
+	if [ "$report" != "$held_report" ]; then
+		held_report="$report"
+		held_since="$uptime"
+	fi
+	held=$((uptime - held_since))
+
+	temp_moved=0
+	if [ -n "$temp" ]; then
+		if [ -z "$last_temp" ]; then
+			temp_moved=1
+		else
+			d=$((temp - last_temp))
+			[ "$d" -lt 0 ] && d=$((-d))
+			[ "$d" -ge "$TEMP_DELTA" ] && temp_moved=1
+		fi
+	fi
+
+	health_changed=0
+	{ [ "$power" != "$last_power" ] || [ "$temp_moved" = 1 ]; } && health_changed=1
+
+	if [ "$report" != "$last_report" ] ||
+		[ $((uptime - last_sent_at)) -ge "$KEEPALIVE" ] ||
+		{ [ "$health_changed" = 1 ] && [ $((uptime - last_sent_at)) -ge "$HEALTH_MIN_GAP" ]; }
+	then
+		case "$report" in
+			stuck-in:*) send "${report#stuck-in:}" "$health" stuck-in "$uptime" "$held" ;;
+			starting:*) send "${report#starting:}" "$health" starting "$uptime" "$held" ;;
+			*)          send "$report" "$health" heartbeat "$uptime" "$held" ;;
+		esac
+		last_report="$report"
+		last_power="$power"
+		last_temp="$temp"
+		last_sent_at="$uptime"
+	elif [ "$health_changed" = 1 ]; then
+		# Something new, held back by the floor: carry it into the next
+		# interval rather than dropping a brown-out because it happened during
+		# a quiet period. Only when it is new — carrying an already-reported
+		# state forward would make the latch monotone again, and a supply that
+		# recovered would never be seen to.
+		case "$power" in *_uv*) saw_uv=1 ;; esac
+		case "$power" in *_thr*) saw_thr=1 ;; esac
+	fi
+	wait_and_sample
+done

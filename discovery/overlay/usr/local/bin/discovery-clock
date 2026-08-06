@@ -1,0 +1,39 @@
+#!/bin/sh
+# discovery-clock — get a real time before anything needs TLS.
+#
+# The Pi 4 has no RTC, and the rpi kernel does not build CONFIG_RTC_DRV_EFI, so
+# userspace starts decades in the past. Every certificate then reads "not yet
+# valid" and every HTTPS call fails — which is why registration could never
+# work even once the boot itself survived. iPXE solves this with its own `ntp`
+# command before chaining; this is the same fix, one stage later.
+#
+# Best effort throughout: a node with a wrong clock is worth booting anyway.
+
+set -u
+log() { echo "[discovery-clock] $*" > /dev/console 2>/dev/null || true; echo "[discovery-clock] $*"; }
+
+for server in time.cloudflare.com pool.ntp.org; do
+	if timeout 8 ntpd -q -n -p "$server" >/dev/null 2>&1; then
+		log "set from ntp $server: $(date -u)"
+		exit 0
+	fi
+done
+
+# Fallback: read the Date header off a plain-HTTP request. No TLS, so it works
+# with a broken clock, which is the entire point.
+api="$(sed -n 's/.*ipxe_api=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)"
+[ -n "$api" ] || api="https://ipxe.cloudcompute.com"
+api="$(echo "$api" | sed 's|^https:|http:|')"
+
+hdr="$(wget -S -O /dev/null "${api%/}/health" 2>&1 | sed -n 's/^[[:space:]]*Date:[[:space:]]*//p' | head -1 | tr -d '\r')"
+if [ -n "$hdr" ]; then
+	# RFC 1123: "Sat, 01 Aug 2026 22:04:11 GMT" -> busybox needs an explicit format.
+	stripped="${hdr% GMT}"
+	if date -u -D "%a, %d %b %Y %H:%M:%S" -s "$stripped" >/dev/null 2>&1; then
+		log "set from HTTP Date: $(date -u)"
+		exit 0
+	fi
+fi
+
+log "could not set the clock; TLS from this node will fail"
+exit 0
