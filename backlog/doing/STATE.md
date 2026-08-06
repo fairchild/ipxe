@@ -56,6 +56,17 @@ Recovery was a power cycle onto the restored overlay: healthy heartbeat inside
 under the same machine id — which incidentally re-confirms the
 rotate-while-unassigned policy on hardware.
 
+**What this did and did not prove.** `reason` has three values and hardware
+exercised one. `stuck` is the one that depends on the new wire contract — the
+node emitting `detail` and the Worker parsing an openrc state and an uptime out
+of it — so it was the right one to spend a hardware run on. `silent` and
+`no-progress` remain unit-tested only (`test/unit/stalls.test.ts`), and they are
+the *lower*-risk paths precisely because they parse no `detail`: a silent node's
+newest event is the iPXE `stage=boot` with no detail at all, and `bootStartMs`
+falls back to the event timestamp. Worth knowing rather than worth fixing —
+"the stall detector is proven" is too strong; "the path that carried the new
+contract is proven" is right.
+
 ## What it exposed — read before wedging anything again
 
 **On a wedged boot you do not get a shell.** `discovery-sshd` declares

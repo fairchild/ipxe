@@ -20,6 +20,39 @@ Binaries embed the chain URL  ─────→    /boot.ipxe, /menu/:id.ipxe
                                         Boot telemetry via KV
 ```
 
+## What else is in here
+
+The bootstrap container is the oldest thing in this repo but no longer the
+largest. Four other directories carry work a cold reader will otherwise miss:
+
+- **`discovery/`** — the Alpine diskless overlay (apkovl) the netbooted node
+  runs: beacons, heartbeat, clock, sshd, and the inventory/register script.
+  Built by `discovery/build-overlay.sh`, uploaded to the Worker's R2 bucket.
+  `discovery/README.md` is the reference for what the node reports and why.
+- **`watchdog/`** — `node_watchdog.py`, out-of-band recovery via a Meross plug
+  when a node stops answering. It reads plug state back after every command,
+  which this hardware requires; see its README.
+- **`scripts/`** — one-shot host tooling: build a diagnostic SD card, rescue a
+  card, patch Raspberry Pi UEFI variables offline (`patch-rpi-uefi-vars.py`).
+- **`backlog/`** — deferred work as one file per task, plus
+  `backlog/doing/STATE.md`, which is the fastest path back into context after a
+  break. Read it before planning anything.
+
+### The cross-repo wire contract
+
+The node and the Worker share a contract that nothing tests: the heartbeat's
+`detail` field is what the Worker's stall detector parses. **Deploy the Worker
+before uploading the overlay, and rebuild the overlay immediately before
+uploading it.** Out of order, or from a stale `discovery/dist/`, the node speaks
+a format the Worker cannot read while every test on both sides stays green,
+because the tests live in different repositories and neither crosses the wire.
+Verify a publish by comparing hashes rather than by trusting the upload:
+
+```bash
+curl -s http://ipxe.cloudcompute.com/discovery/discovery.apkovl.tar.gz | shasum -a 256
+shasum -a 256 discovery/dist/discovery.apkovl.tar.gz
+```
+
 ## Build & Test
 
 ```bash
