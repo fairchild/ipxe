@@ -34,6 +34,11 @@ largest. Four other directories carry work a cold reader will otherwise miss:
   which this hardware requires; see its README.
 - **`scripts/`** — one-shot host tooling: build a diagnostic SD card, rescue a
   card, patch Raspberry Pi UEFI variables offline (`patch-rpi-uefi-vars.py`).
+- **`lab/`** — a QEMU boot lab in a container (`run-lab.sh`). It runs an
+  authoritative dnsmasq standing in for a site's existing DHCP server *and* the
+  production proxy image beside it, so a boot test exercises the real bootstrap
+  config and proves proxy DHCP still coexists with a server that knows nothing
+  about it.
 - **`backlog/`** — deferred work as one file per task, plus
   `backlog/doing/STATE.md`, which is the fastest path back into context after a
   break. Read it before planning anything.
