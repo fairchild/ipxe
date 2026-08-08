@@ -64,7 +64,11 @@ def api_base() -> str:
 
 
 def fetch(url: str, timeout: int = 30) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as res:
+    # A named User-Agent, because the zone 403s urllib's default one
+    # (Python-urllib/3.x reads as a bot upstream). Verified on hardware:
+    # identical request, default UA 403, this UA 200.
+    req = urllib.request.Request(url, headers={"User-Agent": "frame-display/1"})
+    with urllib.request.urlopen(req, timeout=timeout) as res:
         return res.read()
 
 
