@@ -2,6 +2,26 @@
 
 Written as a handoff. Read this first; it is the fastest path back into context.
 
+## 2026-08-08 latest — the frame is on glass (HDMI)
+
+The frame now **displays on the connected monitor**: cold netboot to picture
+in ~81 s, verified by reading `/dev/fb0` back and comparing to the rendered
+image, then re-proven end-to-end from a fresh netboot of the rebuilt overlay
+(`802d0980…`). frame-render is now fetch → compose → *sink*: HDMI
+framebuffer (raw Pillow blit to the vc4 console, repainted every poll pass
+because the console scribbles on it), Inky e-ink (only on image change;
+absent until Slice 0b vendors the wheels), preview PNG when neither exists.
+Two more hardware-taught facts: modern Pillow removed its `BGR;16` packer,
+so RGB565 packs via numpy (now in ensure_deps — the inky stack wants it
+anyway); and the tty1 getty stays underneath the picture as the rescue path,
+cursor hidden, blank timer off.
+
+Next for the frame, in order: **Slice 0b** (vendored aarch64-musl wheels for
+inky in R2 — a prerequisite of attaching either panel), then attach a panel
+and the same loop drives both displays. Real images: replace the test cards
+via `scripts/publish-frames.sh` in the Worker repo; trips integration is its
+own work item.
+
 ## 2026-08-08 late — the frame role is live end to end
 
 The bench Pi **is now the frame**: state `active`, role `frame`, and every

@@ -44,8 +44,8 @@ ensure_deps() {
 	tries=0
 	while [ "$tries" -lt 5 ]; do
 		tries=$((tries + 1))
-		log "installing python3 py3-pillow ca-certificates (attempt $tries)..."
-		if timeout 120 apk add --no-cache python3 py3-pillow ca-certificates >/dev/null 2>&1; then
+		log "installing python3 py3-pillow py3-numpy ca-certificates (attempt $tries)..."
+		if timeout 180 apk add --no-cache python3 py3-pillow py3-numpy ca-certificates >/dev/null 2>&1; then
 			return 0
 		fi
 		sleep 30
@@ -59,6 +59,13 @@ if ! ensure_deps; then
 	log "display deps unavailable; exiting for respawn"
 	exit 1
 fi
+
+# The HDMI sink shares the screen with the tty1 console: hide its blinking
+# cursor and disable the blank timer so the picture isn't interrupted. Best
+# effort — a frame with no monitor has no tty1 worth dressing. The getty
+# itself stays: painting over a login prompt costs nothing, and the prompt
+# still answers a keyboard, which is the rescue path.
+printf '\033[?25l\033[9;0]' > /dev/tty1 2>/dev/null || true
 
 log "starting display loop"
 exec python3 /usr/local/bin/frame-render.py
