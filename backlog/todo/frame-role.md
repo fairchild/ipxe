@@ -74,21 +74,27 @@ dtparam/dtoverlay lines → copy `spi0-0cs.dtbo` (pin to pftf's DTB version)
 into `overlays/`. Every piece exists; only the wrapper is missing. This is
 what makes "plug in an SD card" reproducible on the next Pi.
 
-## Forks (awaiting confirmation)
+## Forks — confirmed 2026-08-08
 
-1. **Same overlay + cmdline role vs a separate frame apkovl.** One publish/
-   hash contract and shared plumbing, vs deterministic vendored deps with no
-   boot-time installs. Recommended: same overlay; revisit inside
-   own-boot-image, where a frame variant becomes a manifest entry.
-2. **Stock inky lib vs minimal custom driver.** ~60 MB of runtime deps vs
-   owning panel init sequences Pimoroni has already revved once. Recommended:
-   stock.
-3. **Node-side dithering vs server-side pre-quantized frames.** Simpler v1 vs
-   the dumb-client shape trips integration will eventually want (and which
-   drops numpy/Pillow from the node entirely). Recommended: node-side v1.
-4. **Which panel.** UC8159 (4"/5.7"), AC073TC1A (7.3"), or Spectra 6 —
-   different controllers, refresh budgets, and EEPROM behavior. Blocks writing
-   `frame-display` constants; needs the physical hardware named.
+1. **Single overlay + cmdline role.** Confirmed. Revisit inside own-boot-image,
+   where a frame variant becomes a manifest entry.
+2. **Stock inky lib.** Confirmed by implication of the panel answer: the fleet
+   has a Spectra 6 13.3" *and* a 4" — two controllers, which is exactly the
+   hardware matrix the stock lib absorbs and a custom driver would double.
+   Spectra 6 support is recent, so pin a current lib version.
+3. **Node-side dithering for v1.** Confirmed.
+4. **Panels: both.** Spectra 6 13.3" and a 4", carrier boards arriving ~a week
+   after confirmation. Two consequences: `frame-display` is panel-agnostic —
+   EEPROM auto-detect is the *primary* path (it exists for precisely this
+   mixed-fleet case) with an explicit override in role config as fallback;
+   and the service ships a dry-run mode (render the dithered output to a PNG
+   instead of `show()`) so the whole pipeline is testable before glass and
+   debuggable after.
+5. **The bench Pi 4 becomes the frame.** Confirmed — its card is already
+   prepared. The lab loses its dedicated test node; wedge-style tests now need
+   scheduling around the frame being on display.
+6. **V1 images from a `frames/` R2 prefix.** Confirmed. trips integration
+   stays future work.
 
 ## Risks that remain
 
