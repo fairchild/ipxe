@@ -9,6 +9,11 @@ description="E-ink picture frame display loop"
 supervisor=supervise-daemon
 command=/usr/local/bin/frame-display
 respawn_delay=30
+# Explicitly unlimited: the default respawn_max of 10 with respawn_period
+# unset is a *lifetime* budget, and the daemon deliberately exits nonzero
+# while its deps are unfetchable — a long mirror outage would spend all ten
+# respawns and leave the frame dead-with-healthy-heartbeat forever.
+respawn_max=0
 
 depend() {
 	# Ordering only, never `need` — the sshd lesson: `need` on a service

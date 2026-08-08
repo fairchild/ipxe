@@ -29,7 +29,6 @@ import urllib.request
 POLL_SECONDS = int(os.environ.get("FRAME_POLL", "300"))
 ROTATE_SECONDS = int(os.environ.get("FRAME_ROTATE", "1800"))
 PREVIEW_PATH = os.environ.get("FRAME_PREVIEW", "/tmp/frame-preview.png")
-CACHE_DIR = "/tmp/frames"
 DEFAULT_RESOLUTION = (800, 480)
 
 
@@ -41,7 +40,13 @@ def log(msg: str) -> None:
             console.write(line + "\n")
     except OSError:
         pass
-    subprocess.run(["logger", "-t", "frame", msg], check=False)
+    try:
+        # check=False covers a nonzero exit but not a missing binary — and
+        # log() runs inside the loop's except handler, so an OSError here
+        # would convert every loop error into process death.
+        subprocess.run(["logger", "-t", "frame", msg], check=False)
+    except OSError:
+        pass
 
 
 def api_base() -> str:
@@ -59,17 +64,28 @@ def fetch(url: str, timeout: int = 30) -> bytes:
         return res.read()
 
 
+_panel_probe_logged = False
+
+
 def get_panel():
     """The real panel, or None for dry-run. EEPROM auto-detect first — the
-    fleet has two different panels, which is the case auto-detect exists for."""
+    fleet has two different panels, which is the case auto-detect exists for.
+    Called again each loop pass while None: device nodes can appear after this
+    process starts, and a one-shot probe would demote a working panel to
+    dry-run for the life of the boot over a race it would win seconds later.
+    """
+    global _panel_probe_logged
     try:
         from inky.auto import auto  # type: ignore
 
         panel = auto()
         log(f"panel: {type(panel).__name__} {panel.resolution}")
+        _panel_probe_logged = False
         return panel
     except Exception as exc:  # noqa: BLE001 — any failure here means dry-run
-        log(f"no driveable panel ({exc.__class__.__name__}: {exc}); dry-run")
+        if not _panel_probe_logged:
+            log(f"no driveable panel ({exc.__class__.__name__}: {exc}); dry-run")
+            _panel_probe_logged = True
         return None
 
 
@@ -93,14 +109,19 @@ def compose(raw: bytes, resolution: tuple[int, int]):
 def main() -> None:
     base = api_base()
     frames = f"{base}/frames"
-    os.makedirs(CACHE_DIR, exist_ok=True)
     panel = get_panel()
-    resolution = panel.resolution if panel else DEFAULT_RESOLUTION
     shown: str | None = None
 
     log(f"loop starting — source {frames}, rotate {ROTATE_SECONDS}s")
     while True:
         try:
+            if panel is None:
+                panel = get_panel()
+                if panel is not None:
+                    # A panel that just appeared should get the current image
+                    # now, not at the next rotation boundary.
+                    shown = None
+            resolution = panel.resolution if panel else DEFAULT_RESOLUTION
             manifest = json.loads(fetch(f"{frames}/manifest.json", timeout=15))
             images = [i["name"] for i in manifest.get("images", []) if i.get("name")]
             digests = {

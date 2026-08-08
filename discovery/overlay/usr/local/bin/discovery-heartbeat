@@ -53,9 +53,10 @@ TEMP_DELTA="${HEARTBEAT_TEMP_DELTA:-5}"       # degrees C of movement worth a re
 # The boot target this overlay belongs to. Same value discovery-beacon sends, so
 # every userspace report from this node lands under one target. A RAM-role boot
 # carries role= on the cmdline (threaded by the Worker's /boot.ipxe) and reports
-# under the role's name; the stall scan watches those targets too. Space-
-# anchored so role_nonce= can never match.
-cmdline_role="$(sed -n 's/.* role=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)"
+# under the role's name; the stall scan watches those targets too. Token-
+# anchored (line start or space) to agree with discovery.start's cmdline_value
+# wherever role= sits; role_nonce= can't match — the "=" excludes it.
+cmdline_role="$({ sed -n 's/^role=\([^ ]*\).*/\1/p; s/.* role=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null; } | head -1)"
 TARGET="${HEARTBEAT_TARGET:-${cmdline_role:-discovery}}"
 LOCK=/run/discovery-heartbeat.pid
 
