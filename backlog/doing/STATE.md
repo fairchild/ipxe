@@ -1,6 +1,31 @@
-# Current state — 2026-08-06
+# Current state — 2026-08-08
 
 Written as a handoff. Read this first; it is the fastest path back into context.
+
+## 2026-08-08 — soft restart is reliable, and the card is frame-ready
+
+Four consecutive `ssh reboot` cycles with no plug involvement: ~110 s from
+command to healthy heartbeat every time, stage timings identical across all
+four (sysinit up17, rc-default up30, sshd up35, heartbeat up39). Soft restart
+is the routine restart; the plug stays reserved for a wedged boot.
+
+The SD card's config.txt now carries `dtparam=spi=on`, `dtparam=i2c_arm=on`
+and `dtoverlay=spi0-0cs` (dtbo added to `overlays/`), applied from the running
+node by mounting `/dev/mmcblk0p1` — no physical access needed. The original
+config is backed up on the card as `config.txt.bak-20260808`. Verified after
+reboot, on the production netboot path: `/dev/spidev0.0` exists with GPIO8
+unclaimed (`SPI_CE0_N input`), `/dev/i2c-1` appears after `modprobe i2c-dev`,
+and a raw `SPI_IOC_MESSAGE` transfer at 1 MHz succeeds. That settles "does SPI
+work under pftf UEFI Devicetree netboot" — the question the frame role
+(`backlog/todo/frame-role.md`) hinged on. Driving actual glass is the only
+step left, blocked on physically attaching the panel (i2c scan shows nothing
+at 0x50, so no Inky is connected today).
+
+Two facts the frame implementation must carry: `spidev` and `i2c-dev` need
+explicit modprobe or `/etc/modules` entries — nothing autoloads them; and the
+node's apk has only `main` configured, while `py3-pillow`, `py3-numpy` and
+`py3-libgpiod` live in `community`, which must be appended to
+`/etc/apk/repositories` before installing.
 
 ## Where things actually are
 
