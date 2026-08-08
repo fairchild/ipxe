@@ -145,11 +145,14 @@ what makes "plug in an SD card" reproducible on the next Pi.
   above): build aarch64-musl wheels once on the node (`apk add gcc
   python3-dev musl-dev py3-pip`, `pip wheel inky`), upload to R2, teach
   `ensure_deps` to `pip install --no-index --find-links` them.
-- **Slice 1 — assign → zero-touch frame** (first merged slice): Worker role
-  entry (`kind: ram`, arch-guarded per cleanup-plan item 6), boot.ts branch +
-  nonce redeem, stall detector accepts `target=frame`; overlay role branch +
-  `frame-display`. Acceptance: power-cycle the assigned Pi with no human
-  contact → image within ~3 minutes; `wrangler tail` parses zero rejects;
-  mutation-check the boot.ts branch.
+- **Slice 1 — assign → zero-touch frame**: **DONE 2026-08-08**
+  (services#1212 + ipxe#13, deployed and proven on hardware). Assignment to
+  active frame heartbeat in 88 s; second boot re-served the frame script
+  from `active`; `wrangler tail` zero rejects; every new branch
+  mutation-checked. Render is dry-run to `/tmp/frame-preview.png` pending
+  Slice 0b. Also fixed on the way: the embedded binaries never sent a MAC
+  (Worker-side bounce now supplies it — this had silently disabled *all*
+  assignment flows), and the zone 403s urllib's default UA (frame-render
+  sends `frame-display/1`).
 - **Slice 2 — card builder**: `build-pi-uefi-card.sh` as above; a second Pi
   from blank card to frame with no manual UEFI or config.txt step.

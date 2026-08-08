@@ -2,6 +2,39 @@
 
 Written as a handoff. Read this first; it is the fastest path back into context.
 
+## 2026-08-08 late — the frame role is live end to end
+
+The bench Pi **is now the frame**: state `active`, role `frame`, and every
+boot since assignment serves the frame script. Assignment-to-active-heartbeat
+measured at **88 seconds** with no hands. Worker version `9f8a9f01`
+(services#1212), overlay `b861f84b…` (ipxe#13); `wrangler tail` across the
+whole window: **zero rejected check-ins**. The node dry-run renders the
+`frames/` R2 directory to `/tmp/frame-preview.png` — the panel isn't attached
+yet, and per `backlog/todo/frame-role.md` **Slice 0b (vendored inky wheels)
+is a prerequisite of glass**: today's boots log
+`no driveable panel (No module named 'inky'); dry-run`, honestly.
+
+Three production facts the hardware taught that no test would have:
+
+- **Our embedded binaries never sent a MAC** — `?arch=${buildarch}` only —
+  so `findByMac` had never once run for a machine booting our own binaries
+  and every assignment (frame *or* Debian) was silently inert. Fixed
+  Worker-side: a one-hop iPXE bounce re-chains with `${net0/mac}`, no
+  reflash. This had survived because every test passes `mac=` explicitly.
+- **The zone 403s urllib's default User-Agent** (`Python-urllib` reads as a
+  bot). Identical request, named UA, 200. frame-render sends
+  `frame-display/1`.
+- **The zone's http exemptions are narrower than believed**: `/frames/` and
+  ~a third of check-ins get 301'd to https; busybox wget and urllib both
+  follow, so nothing is lost, but "plain http, no TLS dependency" now
+  overstates — the redirect target is https and the fetch survives because
+  the clock is right by the default runlevel.
+
+Reset path untested on hardware (assign/reset was exercised in tests only).
+The Meross watchdog must not be armed against the frame — its freshness
+probe reads `last_seen`, which a healthy frame only touches at boot
+(`frame-role.md`, risks).
+
 ## 2026-08-08 — soft restart is reliable, and the card is frame-ready
 
 Four consecutive `ssh reboot` cycles with no plug involvement: ~110 s from
