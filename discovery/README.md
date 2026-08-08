@@ -169,6 +169,24 @@ fetch, and `-R` mints host keys on demand — which suits a node with nowhere to
 persist them. Each boot therefore has new host keys, so expect ssh's
 changed-host-key warning on a re-boot of the same machine.
 
+Anything scripted against the node has to opt out of host-key pinning or it
+breaks on the second boot it ever sees. A scoped stanza keeps that opt-out from
+leaking to hosts whose keys are actually stable:
+
+```
+Host <node>
+  User root
+  ProxyJump <relay>
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  LogLevel ERROR
+```
+
+Pinning can't be restored by shipping a fixed host key in the overlay — the
+overlay is published to a world-readable bucket, so a private key in it is a
+public key in the worst sense. Accepting TOFU-per-boot inside the LAN is the
+honest trade.
+
 Everything about it is bounded and fails soft, because it necessarily runs at
 boot on a RAM node: dropbear is not in the base image, so it comes from the
 plain-http mirror on the kernel cmdline. `apk` is wrapped in `timeout` and
