@@ -98,6 +98,14 @@ what makes "plug in an SD card" reproducible on the next Pi.
 
 ## Risks that remain
 
+- **The watchdog's freshness probe predates RAM roles.** `node_watchdog.py`
+  judges liveness by record age (`last_seen` preferred), and a frame node's
+  `last_seen` moves only at each boot's ack — a frame that stays up for days
+  looks dead to that probe. Before the watchdog is ever armed against the
+  frame Pi, it must learn RAM-role semantics (read the boot feed, or the
+  stall scan's verdict, instead of row age) or it will cycle a healthy frame
+  on schedule.
+
 - **NVRAM reversion**: DT mode lives inside `RPI_EFI.fd`; a reverted card is a
   dark panel with a healthy heartbeat. Card builder sets it; several cold
   cycles should confirm persistence.
@@ -111,11 +119,32 @@ what makes "plug in an SD card" reproducible on the next Pi.
   Feeding it into frames is real future work (likely a Worker-side selection
   that re-serves chosen images into `frames/`), not a v1 dependency.
 
+## Accepted for v1 (pre-deploy review found these; each is deliberate)
+
+- **Production frame boots are dry-run until Slice 0b lands.** `ensure_deps`
+  installs only python3+Pillow; the inky lib is pip-only and pip is not on the
+  node. Every health signal reads green while the glass would stay blank —
+  fine today because no glass exists, a trap the day it does. Slice 0b
+  (vendored musl wheels for inky/gpiodevice/smbus2/spidev in R2, installed by
+  `ensure_deps`) is therefore a *prerequisite* of attaching the panel, not a
+  nicety.
+- **`set_image` with an RGB canvas assumes Impression-class panels.** Both
+  fleet panels are (Spectra 6 13.3", Impression 4"); a pHAT/wHAT would need
+  palette-mode handling in `compose`.
+- **A bad publish (manifest sha256 ≠ object) freezes the previous image**
+  with only console-log evidence, refetching ~12×/hour until the slot
+  rotates. Correct for truncation; a mismatch counter in heartbeat detail
+  would make it fleet-visible if it ever recurs.
+
 ## Slices
 
 - **Slice 0 — image on glass** (bench, no merge): attach the panel, apk/pip
   the package map, run an inky example over ssh. Everything except the glass
   itself is already proven.
+- **Slice 0b — the display stack on the node** (prerequisite of glass, see
+  above): build aarch64-musl wheels once on the node (`apk add gcc
+  python3-dev musl-dev py3-pip`, `pip wheel inky`), upload to R2, teach
+  `ensure_deps` to `pip install --no-index --find-links` them.
 - **Slice 1 — assign → zero-touch frame** (first merged slice): Worker role
   entry (`kind: ram`, arch-guarded per cleanup-plan item 6), boot.ts branch +
   nonce redeem, stall detector accepts `target=frame`; overlay role branch +

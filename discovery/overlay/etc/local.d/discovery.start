@@ -192,17 +192,25 @@ build_inventory() {
 # http_post URL JSON_BODY [BEARER] -> writes body to $HTTP_BODY_FILE, echoes status
 HTTP_BODY_FILE="/tmp/discovery-http-body"
 http_post() {
+	# Timeouts on both branches: an attempt that can hang is worse than one
+	# that fails, because every caller retries a failure but nothing rescues a
+	# caller stuck inside a connection that went silent — for role-ack that
+	# stuck state reads as a stalled boot and invites a power cycle of a
+	# working node.
 	url="$1"; body="$2"; bearer="${3:-}"
 	if command -v curl >/dev/null 2>&1; then
 		set -- -s -o "$HTTP_BODY_FILE" -w '%{http_code}' \
+			--connect-timeout 10 -m 30 \
 			-X POST -H 'Content-Type: application/json' --data "$body"
 		[ -n "$bearer" ] && set -- "$@" -H "Authorization: Bearer $bearer"
 		curl "$@" "$url" 2>/dev/null || echo 000
 	else
-		# busybox wget: no status code, so infer from output presence.
+		# busybox wget: no status code, so infer from output presence. Every
+		# non-2xx therefore reads as 000 here — callers must not treat any
+		# specific failure status as reliably distinguishable on this branch.
 		hdr=""
 		[ -n "$bearer" ] && hdr="--header=Authorization: Bearer $bearer"
-		if wget -q -O "$HTTP_BODY_FILE" \
+		if wget -q -T 10 -O "$HTTP_BODY_FILE" \
 			--header='Content-Type: application/json' \
 			${hdr:+"$hdr"} \
 			--post-data="$body" "$url" 2>/dev/null; then
@@ -318,6 +326,54 @@ poll_assignment() {
 	done
 }
 
+# ---- RAM-role ack ------------------------------------------------------------
+
+ack_ram_role() {
+	# A RAM-role boot (role= on the cmdline) does not register — the machine
+	# row already exists and is assigned/active. Its obligation is the ack:
+	# redeem this boot's single-use nonce, which the Worker turns into
+	# state=active plus a last_checkin stamp. That stamp is what keeps this
+	# boot off the stall list, so the ack is this boot's registration.
+	machine_id="$(cmdline_value machine_id || true)"
+	nonce="$(cmdline_value role_nonce || true)"
+	if [ -z "$machine_id" ] || [ -z "$nonce" ]; then
+		log "role boot missing machine_id/role_nonce on cmdline; cannot ack."
+		log "The Worker will report this boot as stalled — that is correct."
+		return 1
+	fi
+	body="$(printf '{"nonce":"%s"}' "$(json_escape "$nonce")")"
+	# Bounded: on the wget fallback every rejection reads as 000 (no status
+	# introspection), so an unbounded loop would retry a consumed nonce
+	# forever. Sixty attempts ≈ 30 minutes — twice the stall threshold — and
+	# then this stops and lets the stall scan be the escalation, which is its
+	# job. The nonce is single-use, so nothing later can succeed anyway.
+	attempts=0
+	while [ "$attempts" -lt 60 ]; do
+		attempts=$((attempts + 1))
+		status="$(http_post "$IPXE_API/api/machines/$machine_id/role-ack" "$body")"
+		case "$status" in
+			200)
+				log "role ack accepted — machine $machine_id is active"
+				return 0
+				;;
+			403)
+				# Single-use: a 403 after an earlier attempt whose reply was
+				# lost usually means that attempt landed. Say so and stop —
+				# retrying a consumed nonce can never succeed.
+				log "role ack rejected (403). If an earlier attempt timed out"
+				log "it may have been consumed; the dashboard has the truth."
+				return 1
+				;;
+			*)
+				log "role ack error (http $status); retrying in ${POLL_SECONDS}s"
+				sleep "$POLL_SECONDS"
+				;;
+		esac
+	done
+	log "role ack gave up after $attempts attempts; the stall scan takes it from here"
+	return 1
+}
+
 # ---- unregistered wait -------------------------------------------------------
 
 wait_without_token() {
@@ -333,6 +389,39 @@ wait_without_token() {
 main() {
 	log "discovery OS starting — api=$IPXE_API"
 	ensure_tools
+
+	# A RAM-role boot skips the whole register-and-poll lifecycle: the Worker
+	# put role= on this cmdline precisely because the machine is already
+	# assigned (registering would 409). Ack the boot and hand the rest to the
+	# role's own service (frame-display gates itself on the same param).
+	role="$(cmdline_value role || true)"
+	if [ -n "$role" ]; then
+		log "RAM role boot: role=$role — skipping registration"
+		ack_ram_role &
+		if [ "$role" = "frame" ]; then
+			# frame-display is deliberately in no runlevel — only a frame
+			# boot should ever carry it. Detached because this script *is*
+			# the `local` service; openrc will start an out-of-runlevel
+			# service during runlevel start (deps just aren't waited on),
+			# but a failed attempt is marked FAILED and nothing would retry
+			# it — and this start is the one action the role exists for, so
+			# it retries like everything else in the role does.
+			(
+				sleep 3
+				tries=0
+				until rc-service frame-display start >/dev/null 2>&1; do
+					tries=$((tries + 1))
+					if [ "$tries" -ge 10 ]; then
+						log "frame-display failed to start after $tries attempts"
+						exit 1
+					fi
+					sleep 15
+				done
+				log "frame-display started"
+			) &
+		fi
+		return 0
+	fi
 
 	register
 	rc=$?

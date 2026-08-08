@@ -51,9 +51,13 @@ POWER_SAMPLE="${HEARTBEAT_POWER_SAMPLE:-2}"   # how often to look at the power b
 HEALTH_MIN_GAP="${HEARTBEAT_HEALTH_GAP:-60}"  # min seconds between health-driven reports
 TEMP_DELTA="${HEARTBEAT_TEMP_DELTA:-5}"       # degrees C of movement worth a report
 # The boot target this overlay belongs to. Same value discovery-beacon sends, so
-# every userspace report from a discovery node lands under the target the Worker
-# recognises as a discovery boot.
-TARGET="${HEARTBEAT_TARGET:-discovery}"
+# every userspace report from this node lands under one target. A RAM-role boot
+# carries role= on the cmdline (threaded by the Worker's /boot.ipxe) and reports
+# under the role's name; the stall scan watches those targets too. Token-
+# anchored (line start or space) to agree with discovery.start's cmdline_value
+# wherever role= sits; role_nonce= can't match — the "=" excludes it.
+cmdline_role="$({ sed -n 's/^role=\([^ ]*\).*/\1/p; s/.* role=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null; } | head -1)"
+TARGET="${HEARTBEAT_TARGET:-${cmdline_role:-discovery}}"
 LOCK=/run/discovery-heartbeat.pid
 
 # One instance. Without this, anything that starts the service twice doubles the
