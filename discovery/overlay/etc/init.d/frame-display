@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+description="E-ink picture frame display loop"
+
+# Not linked into any runlevel: discovery.start starts this service only on a
+# boot whose cmdline says role=frame, so a discovery node's rc-status never
+# carries it. supervise-daemon (not --background) so rc-status tells the truth
+# — the two existing backgrounded services already read `crashed` on healthy
+# nodes (backlog/todo/openrc-crashed-services.md) and this must not be a third.
+supervisor=supervise-daemon
+command=/usr/local/bin/frame-display
+respawn_delay=30
+
+depend() {
+	# Ordering only, never `need` — the sshd lesson: `need` on a service
+	# openrc considers crashed is silently unsatisfiable, and a frame that
+	# cannot display must still heartbeat.
+	after net local
+}

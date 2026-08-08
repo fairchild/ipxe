@@ -68,7 +68,13 @@ uptime="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)"
 # a state and a token nobody can read. The endpoint's stage pattern permits it,
 # so fold it rather than trust every future caller to avoid it.
 detail_state="$(printf '%s' "$STAGE" | tr '_' '-')"
-url="${IPXE_API}/api/checkin?mac=${mac}&arch=${arch}&target=discovery&stage=${STAGE}&detail=${detail_state}_up${uptime}"
+# A RAM-role boot (role= on the cmdline, threaded there by the Worker's
+# /boot.ipxe) reports under the role's name so its boots are distinguishable
+# from discovery's in the feed — and so the stall scan, which watches RAM-role
+# targets, sees them. Space-anchored so role_nonce= can never match.
+target="$(sed -n 's/.* role=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)"
+[ -n "$target" ] || target="discovery"
+url="${IPXE_API}/api/checkin?mac=${mac}&arch=${arch}&target=${target}&stage=${STAGE}&detail=${detail_state}_up${uptime}"
 
 # busybox wget is the only fetcher guaranteed present this early — curl and the
 # apk-installed tools arrive later, if at all. Call it through the busybox

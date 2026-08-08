@@ -1,0 +1,62 @@
+#!/bin/sh
+# frame-display — supervised daemon for the frame role.
+#
+# Ensures the display stack exists (this is a RAM node; every boot starts from
+# nothing), then hands off to the python loop. Runs under supervise-daemon, so
+# a crash respawns; the dependency fetch therefore lives here, inside the
+# supervised process, where a slow mirror delays the frame and nothing else.
+#
+# POSIX sh (busybox ash) only.
+
+set -u
+
+LOG_TAG="frame"
+
+log() {
+	msg="[$LOG_TAG] $*"
+	echo "$msg" > /dev/console 2>/dev/null || true
+	echo "$msg"
+	logger -t "$LOG_TAG" "$*" 2>/dev/null || true
+}
+
+# The SPI/I2C device nodes need their drivers; nothing autoloads them on the
+# Alpine netboot (verified on hardware 2026-08-08). Harmless where absent.
+modprobe spi-bcm2835 2>/dev/null || true
+modprobe spidev 2>/dev/null || true
+modprobe i2c-dev 2>/dev/null || true
+
+# py3-pillow lives in community; the netboot cmdline configures only main.
+ensure_repo() {
+	repos=/etc/apk/repositories
+	grep -q '/community$' "$repos" 2>/dev/null && return 0
+	main="$(grep '/main$' "$repos" 2>/dev/null | head -1)"
+	[ -n "$main" ] || return 1
+	echo "$main" | sed 's|/main$|/community|' >> "$repos"
+}
+
+# Bounded, retried, and inside the supervised daemon — never in an openrc
+# start(), where a dead mirror would hold the runlevel (the sysinit lesson).
+ensure_deps() {
+	command -v python3 >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null && return 0
+	ensure_repo || log "no main repo line found; apk will likely fail"
+	tries=0
+	while [ "$tries" -lt 5 ]; do
+		tries=$((tries + 1))
+		log "installing python3 py3-pillow (attempt $tries)..."
+		if timeout 120 apk add --no-cache python3 py3-pillow >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 30
+	done
+	return 1
+}
+
+if ! ensure_deps; then
+	# Exit nonzero: supervise-daemon respawns after respawn_delay, so a mirror
+	# outage becomes a retry loop with a heartbeat, not a dead frame.
+	log "display deps unavailable; exiting for respawn"
+	exit 1
+fi
+
+log "starting display loop"
+exec python3 /usr/local/bin/frame-render.py

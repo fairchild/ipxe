@@ -318,6 +318,45 @@ poll_assignment() {
 	done
 }
 
+# ---- RAM-role ack ------------------------------------------------------------
+
+ack_ram_role() {
+	# A RAM-role boot (role= on the cmdline) does not register — the machine
+	# row already exists and is assigned/active. Its obligation is the ack:
+	# redeem this boot's single-use nonce, which the Worker turns into
+	# state=active plus a last_checkin stamp. That stamp is what keeps this
+	# boot off the stall list, so the ack is this boot's registration.
+	machine_id="$(cmdline_value machine_id || true)"
+	nonce="$(cmdline_value role_nonce || true)"
+	if [ -z "$machine_id" ] || [ -z "$nonce" ]; then
+		log "role boot missing machine_id/role_nonce on cmdline; cannot ack."
+		log "The Worker will report this boot as stalled — that is correct."
+		return 1
+	fi
+	body="$(printf '{"nonce":"%s"}' "$(json_escape "$nonce")")"
+	while true; do
+		status="$(http_post "$IPXE_API/api/machines/$machine_id/role-ack" "$body")"
+		case "$status" in
+			200)
+				log "role ack accepted — machine $machine_id is active"
+				return 0
+				;;
+			403)
+				# Single-use: a 403 after an earlier attempt whose reply was
+				# lost usually means that attempt landed. Say so and stop —
+				# retrying a consumed nonce can never succeed.
+				log "role ack rejected (403). If an earlier attempt timed out"
+				log "it may have been consumed; the dashboard has the truth."
+				return 1
+				;;
+			*)
+				log "role ack error (http $status); retrying in ${POLL_SECONDS}s"
+				sleep "$POLL_SECONDS"
+				;;
+		esac
+	done
+}
+
 # ---- unregistered wait -------------------------------------------------------
 
 wait_without_token() {
@@ -333,6 +372,24 @@ wait_without_token() {
 main() {
 	log "discovery OS starting — api=$IPXE_API"
 	ensure_tools
+
+	# A RAM-role boot skips the whole register-and-poll lifecycle: the Worker
+	# put role= on this cmdline precisely because the machine is already
+	# assigned (registering would 409). Ack the boot and hand the rest to the
+	# role's own service (frame-display gates itself on the same param).
+	role="$(cmdline_value role || true)"
+	if [ -n "$role" ]; then
+		log "RAM role boot: role=$role — skipping registration"
+		ack_ram_role &
+		if [ "$role" = "frame" ]; then
+			# frame-display is deliberately in no runlevel — only a frame
+			# boot should ever carry it. Started detached and after a beat,
+			# because this script *is* the `local` service and openrc will
+			# not start a second service while /run/openrc/starting exists.
+			( sleep 3; rc-service frame-display start ) &
+		fi
+		return 0
+	fi
 
 	register
 	rc=$?
