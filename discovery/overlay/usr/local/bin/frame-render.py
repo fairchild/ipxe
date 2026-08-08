@@ -8,10 +8,14 @@ except the final SPI write — manifest polling, image fetch, resize, letterbox
 ssh before the panel is ever attached, and debuggable after (the preview PNG
 is what the panel should be showing).
 
-Fetches ride plain HTTP like the heartbeat: the images are public, the node is
-trust-on-LAN by the apkovl's own standard, and a display that needs TLS is
-dark exactly when the clock is wrong. The manifest's sha256 entries guard
-against truncated fetches, not adversaries.
+Fetch URLs are plain HTTP like the heartbeat's, but the zone's https-redirect
+exemptions cover only the boot-critical paths — /frames/ 301s to https and
+urllib follows it (ca-certificates comes from ensure_deps). That is
+acceptable here and nowhere earlier in the boot: this loop runs in the
+default runlevel, after the clock service, so TLS's clock dependency is
+already satisfied — and a failed fetch retries every poll rather than
+wedging a boot. The manifest's sha256 entries guard against truncated
+fetches, not adversaries.
 
 Stdlib + Pillow only. The inky library (pip-only) is optional at runtime:
 present and a panel answers -> real refreshes; otherwise dry-run.

@@ -37,13 +37,15 @@ ensure_repo() {
 # Bounded, retried, and inside the supervised daemon — never in an openrc
 # start(), where a dead mirror would hold the runlevel (the sysinit lesson).
 ensure_deps() {
+	# ca-certificates because the frames fetch gets 301'd to https (the zone's
+	# http exemptions cover only boot-critical paths) and urllib follows it.
 	command -v python3 >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null && return 0
 	ensure_repo || log "no main repo line found; apk will likely fail"
 	tries=0
 	while [ "$tries" -lt 5 ]; do
 		tries=$((tries + 1))
-		log "installing python3 py3-pillow (attempt $tries)..."
-		if timeout 120 apk add --no-cache python3 py3-pillow >/dev/null 2>&1; then
+		log "installing python3 py3-pillow ca-certificates (attempt $tries)..."
+		if timeout 120 apk add --no-cache python3 py3-pillow ca-certificates >/dev/null 2>&1; then
 			return 0
 		fi
 		sleep 30
