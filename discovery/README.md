@@ -217,6 +217,43 @@ returns with nothing left to supervise. `rc-status` therefore cannot tell you
 whether this node is well, and `need` on either silently skips the dependent —
 use `after`. Tracked in `backlog/todo/openrc-crashed-services.md`.
 
+## The frame role
+
+A machine assigned `frame` (a `kind: "ram"` role — see the Worker's
+`roles.ts`) reboots into this same overlay with `role=frame`, a single-use
+`role_nonce`, and its `machine_id` on the kernel cmdline. `discovery.start`
+then skips register-and-poll — the machine is already past that lifecycle —
+redeems the nonce at `/api/machines/:id/role-ack` (the boot's
+registration-equivalent: `assigned → active`, `last_checkin` stamped, stall
+scan satisfied), and starts `frame-display`. Beacon and heartbeat report
+`target=frame`, so frame boots are distinguishable in the feed and covered
+by the stall scan.
+
+`frame-display` supervises `frame-render.py`, whose shape is fetch →
+compose → **sink**: it polls `frames/manifest.json` on the Worker, fetches
+the current image, and letterboxes it onto every display the machine has.
+Sinks are independent and probed each pass:
+
+- **HDMI** (`/dev/fb0`, the vc4 console — one reason modloop stays): a raw
+  Pillow blit, no X. The console shares this surface, so the fb repaints
+  every poll pass to clean any text scribbled over it; tty1 keeps its getty
+  underneath as the rescue path.
+- **Inky e-ink** (SPI, via the inky library's EEPROM auto-detect): refreshes
+  only on image change — a repaint costs ~half a minute of flashing.
+  **Absent until the vendored-wheels work lands** (`backlog/todo/
+  frame-role.md`, Slice 0b): the lib is pip-only and the node deliberately
+  installs nothing from PyPI at boot. Until then boots log
+  `no panel (No module named 'inky')`, honestly.
+- **Preview** (`/tmp/frame-preview.png`) when no display exists — the same
+  pipeline minus the device write, which is what makes a frame testable
+  over ssh.
+
+Publish images with the Worker repo's `scripts/publish-frames.sh <dir>` —
+it uploads the images *and* regenerates the manifest, which is the contract
+(an image without a manifest entry does not exist). Rotation is a function
+of wall clock, not local state, so every frame in a fleet shows the same
+picture and a reboot lands mid-schedule instead of restarting it.
+
 ## Verify with QEMU
 
 The overlay was verified end-to-end against a local `wrangler dev` (see the

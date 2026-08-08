@@ -154,5 +154,10 @@ what makes "plug in an SD card" reproducible on the next Pi.
   (Worker-side bounce now supplies it — this had silently disabled *all*
   assignment flows), and the zone 403s urllib's default UA (frame-render
   sends `frame-display/1`).
+- **Slice 1b — HDMI sink**: **DONE 2026-08-08.** frame-render refactored to
+  fetch → compose → sink; `/dev/fb0` (vc4 console, RGB565-via-numpy blit,
+  repaint-every-pass because the console shares the surface) beside the Inky
+  sink (image-change only) and the preview PNG. Cold netboot to picture on a
+  1080p monitor: ~81 s. The Inky sink stays absent until Slice 0b.
 - **Slice 2 — card builder**: `build-pi-uefi-card.sh` as above; a second Pi
   from blank card to frame with no manual UEFI or config.txt step.
