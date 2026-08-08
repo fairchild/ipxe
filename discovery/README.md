@@ -182,6 +182,23 @@ convenience, and it is wired so it can never come first.
 With no key staged into the overlay the script logs that fact and exits without
 starting a daemon: a node nobody can log into beats a node anybody can.
 
+The operational consequence of running after `local`, which is easy to miss
+until you need it: **a boot that wedges before `local` has no ssh either.** The
+shell is available on a healthy node and absent on exactly the node you most
+want to inspect, so out-of-band power (`watchdog/node_watchdog.py`) is the only
+way back from a wedge, not a redundant convenience. Two habits follow. Restore a
+known-good overlay to R2 the moment you confirm a node is wedged — the apkovl
+only matters at next boot, so it costs nothing and makes every later reboot
+healthy however it gets triggered. And when the node *is* healthy, prefer
+`ssh root@<node-ip> reboot` over the plug: it re-runs the whole netboot chain,
+a RAM node loses nothing, and it does not depend on a wifi relay that flaps.
+
+Note also that openrc records `discovery-sshd` and `discovery-clock` as
+`crashed` on a perfectly healthy node, because each backgrounds its daemon and
+returns with nothing left to supervise. `rc-status` therefore cannot tell you
+whether this node is well, and `need` on either silently skips the dependent —
+use `after`. Tracked in `backlog/todo/openrc-crashed-services.md`.
+
 ## Verify with QEMU
 
 The overlay was verified end-to-end against a local `wrangler dev` (see the

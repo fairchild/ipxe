@@ -113,8 +113,9 @@ the same broken state.
 
 ## Open questions
 
-- Where the always-on controller lives (orin is the obvious candidate) — it
-  needs to host serial capture, the LAN artifact mirror, and the watchdog.
+- Where the always-on controller lives (the existing LAN relay host is the
+  obvious candidate) — it needs to host serial capture, the LAN artifact
+  mirror, and the watchdog.
 - Whether to mirror boot artifacts on the LAN as a cloud-outage fallback, and
   whether that reopens the trust surface ADR 0001/0002 deliberately closed.
 - Serial capture hardware: USB-TTL on the GPIO UART is the real answer;
