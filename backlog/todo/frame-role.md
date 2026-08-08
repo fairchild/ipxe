@@ -98,6 +98,14 @@ what makes "plug in an SD card" reproducible on the next Pi.
 
 ## Risks that remain
 
+- **The watchdog's freshness probe predates RAM roles.** `node_watchdog.py`
+  judges liveness by record age (`last_seen` preferred), and a frame node's
+  `last_seen` moves only at each boot's ack — a frame that stays up for days
+  looks dead to that probe. Before the watchdog is ever armed against the
+  frame Pi, it must learn RAM-role semantics (read the boot feed, or the
+  stall scan's verdict, instead of row age) or it will cycle a healthy frame
+  on schedule.
+
 - **NVRAM reversion**: DT mode lives inside `RPI_EFI.fd`; a reverted card is a
   dark panel with a healthy heartbeat. Card builder sets it; several cold
   cycles should confirm persistence.
