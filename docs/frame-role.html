@@ -1,0 +1,1604 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An open-source field guide to the complete camera-to-glass path: phone capture, Trips curation, authenticated media delivery, iPXE boot, rendering, and trust boundaries.">
+  <meta name="color-scheme" content="light dark">
+  <title>Frame role field guide · iPXE Bootstrap</title>
+  <style>
+    :root {
+      --paper: #efe9d8;
+      --paper-deep: #e4dbc4;
+      --ink: #17211d;
+      --ink-soft: #4d5b54;
+      --line: #a69e89;
+      --signal: #0e795e;
+      --signal-wash: #cce3d7;
+      --warning: #c64e2b;
+      --warning-wash: #f2d0bd;
+      --night: #111a17;
+      --code: #17221e;
+      --code-ink: #e8f0e8;
+      --shadow: 0 18px 50px rgb(28 34 28 / 12%);
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --sans: Avenir, "Avenir Next", Futura, "Century Gothic", sans-serif;
+      --mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #17201c;
+        --paper-deep: #111814;
+        --ink: #edf1e7;
+        --ink-soft: #b3beb5;
+        --line: #536058;
+        --signal: #72d2ac;
+        --signal-wash: #1d493b;
+        --warning: #ff8c64;
+        --warning-wash: #512b20;
+        --night: #090e0c;
+        --code: #0b110e;
+        --code-ink: #e8f0e8;
+        --shadow: 0 18px 50px rgb(0 0 0 / 28%);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 2rem;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, transparent 24px, rgb(120 105 75 / 10%) 25px, transparent 26px),
+        linear-gradient(var(--paper), var(--paper));
+      background-size: 48px 100%, 100% 100%;
+      font-family: var(--serif);
+      font-size: 18px;
+      line-height: 1.62;
+    }
+
+    a {
+      color: var(--signal);
+      text-decoration-thickness: .08em;
+      text-underline-offset: .18em;
+    }
+
+    a:hover { text-decoration-thickness: .16em; }
+
+    :focus-visible {
+      outline: 3px solid var(--warning);
+      outline-offset: 4px;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 20;
+      top: .75rem;
+      left: .75rem;
+      transform: translateY(-180%);
+      padding: .6rem .9rem;
+      color: var(--paper);
+      background: var(--ink);
+      font-family: var(--sans);
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .masthead {
+      min-height: 90vh;
+      display: grid;
+      align-content: space-between;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 78% 25%, var(--signal-wash), transparent 28rem),
+        linear-gradient(135deg, transparent 66%, rgb(198 78 43 / 8%) 66% 69%, transparent 69%);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.1rem clamp(1.2rem, 4vw, 4.8rem);
+      border-bottom: 1px solid var(--line);
+      font-family: var(--sans);
+      font-size: .7rem;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .topbar a { color: inherit; text-decoration: none; }
+    .topbar .edition { color: var(--ink-soft); text-align: right; }
+
+    .hero {
+      width: min(1180px, calc(100% - 2.4rem));
+      margin: 0 auto;
+      padding: clamp(4rem, 9vw, 9rem) 0 clamp(3rem, 7vw, 6rem);
+    }
+
+    .eyebrow,
+    .section-kicker {
+      margin: 0 0 1rem;
+      color: var(--warning);
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { text-wrap: pretty; }
+
+    h1 {
+      max-width: 930px;
+      margin: 0;
+      font-size: clamp(4rem, 11vw, 9.5rem);
+      font-weight: 500;
+      letter-spacing: -.065em;
+      line-height: .82;
+    }
+
+    h1 em {
+      display: block;
+      color: var(--signal);
+      font-weight: 400;
+    }
+
+    .lede {
+      max-width: 760px;
+      margin: 2.5rem 0 0 clamp(0rem, 14vw, 11rem);
+      font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+      line-height: 1.35;
+    }
+
+    .signal-strip {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      margin: 0;
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: clamp(.58rem, 1vw, .72rem);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .signal-strip span {
+      position: relative;
+      padding: 1.1rem .5rem;
+      text-align: center;
+      border-right: 1px solid var(--line);
+      animation: signal-in .55s both;
+    }
+
+    .signal-strip span:nth-child(2) { animation-delay: .08s; }
+    .signal-strip span:nth-child(3) { animation-delay: .16s; }
+    .signal-strip span:nth-child(4) { animation-delay: .24s; }
+    .signal-strip span:nth-child(5) { animation-delay: .32s; }
+    .signal-strip span:nth-child(6) { animation-delay: .4s; }
+    .signal-strip span:nth-child(7) { animation-delay: .48s; }
+    .signal-strip span:nth-child(8) { animation-delay: .56s; border-right: 0; }
+
+    .signal-strip span::after {
+      content: "";
+      position: absolute;
+      right: -.28rem;
+      top: calc(50% - .28rem);
+      z-index: 2;
+      width: .55rem;
+      height: .55rem;
+      border: 1px solid var(--line);
+      border-left: 0;
+      border-bottom: 0;
+      background: var(--paper);
+      transform: rotate(45deg);
+    }
+
+    .signal-strip span:last-child::after { display: none; }
+
+    @keyframes signal-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .page-shell {
+      display: grid;
+      grid-template-columns: minmax(170px, 240px) minmax(0, 900px);
+      gap: clamp(2rem, 6vw, 7rem);
+      width: min(1180px, calc(100% - 2.4rem));
+      margin: 0 auto;
+      padding: 5rem 0 8rem;
+    }
+
+    .contents {
+      align-self: start;
+      position: sticky;
+      top: 1.5rem;
+      font-family: var(--sans);
+      font-size: .74rem;
+      line-height: 1.35;
+    }
+
+    .contents strong {
+      display: block;
+      margin-bottom: .9rem;
+      color: var(--ink-soft);
+      font-size: .65rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+
+    .contents ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: toc;
+      border-top: 1px solid var(--line);
+    }
+
+    .contents li { counter-increment: toc; border-bottom: 1px solid var(--line); }
+
+    .contents a {
+      display: grid;
+      grid-template-columns: 2.2rem 1fr;
+      padding: .8rem .1rem;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .contents a::before {
+      content: "0" counter(toc);
+      color: var(--signal);
+      font-family: var(--mono);
+      font-size: .64rem;
+    }
+
+    main { min-width: 0; }
+
+    section {
+      padding: 0 0 6rem;
+      scroll-margin-top: 2rem;
+    }
+
+    section + section {
+      padding-top: 5.5rem;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      max-width: 760px;
+      margin: 0 0 2rem;
+      font-size: clamp(2.5rem, 6vw, 5.4rem);
+      font-weight: 500;
+      letter-spacing: -.045em;
+      line-height: .95;
+    }
+
+    h3 {
+      margin: 0 0 .7rem;
+      font-family: var(--sans);
+      font-size: .95rem;
+      letter-spacing: .03em;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
+    .intro-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .big-copy {
+      margin-top: 0;
+      font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+      line-height: 1.42;
+    }
+
+    .margin-note {
+      padding: 1.1rem 0 1.1rem 1.2rem;
+      border-left: 4px solid var(--signal);
+      color: var(--ink-soft);
+      font-family: var(--sans);
+      font-size: .8rem;
+      line-height: 1.5;
+    }
+
+    .principles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 3rem;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .principle {
+      min-height: 250px;
+      padding: 1.6rem;
+      background: color-mix(in srgb, var(--paper) 90%, transparent);
+      border-right: 1px solid var(--line);
+    }
+
+    .principle:last-child { border-right: 0; }
+
+    .principle .index {
+      display: block;
+      margin-bottom: 3rem;
+      color: var(--warning);
+      font-family: var(--mono);
+      font-size: .68rem;
+    }
+
+    .principle p { margin: .7rem 0 0; color: var(--ink-soft); font-size: .95rem; }
+
+    .architecture {
+      margin-top: 3rem;
+      border: 1px solid var(--line);
+      background: var(--paper-deep);
+      box-shadow: var(--shadow);
+    }
+
+    .credential-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      margin-top: 1.5rem;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+
+    .credential {
+      min-height: 220px;
+      padding: 1.4rem;
+      background: var(--paper);
+    }
+
+    .credential .credential-path {
+      display: block;
+      margin-bottom: 2.5rem;
+      color: var(--warning);
+      font-family: var(--mono);
+      font-size: .6rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .credential p {
+      margin: .7rem 0 0;
+      color: var(--ink-soft);
+      font-size: .9rem;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 9rem 1fr;
+      min-height: 135px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .lane:last-child { border-bottom: 0; }
+
+    .lane-name {
+      display: flex;
+      align-items: center;
+      padding: 1.2rem;
+      border-right: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: .65rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+    }
+
+    .lane-track {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: stretch;
+    }
+
+    .node {
+      position: relative;
+      display: grid;
+      align-content: center;
+      min-width: 0;
+      padding: 1.2rem;
+      border-right: 1px dashed var(--line);
+    }
+
+    .node:last-child { border-right: 0; }
+
+    .node b {
+      font-family: var(--sans);
+      font-size: .78rem;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+
+    .node small {
+      display: block;
+      margin-top: .35rem;
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: .62rem;
+      line-height: 1.4;
+    }
+
+    .node.arrow::after {
+      content: "→";
+      position: absolute;
+      right: -.62rem;
+      top: calc(50% - .75rem);
+      z-index: 2;
+      width: 1.25rem;
+      color: var(--signal);
+      background: var(--paper-deep);
+      font-family: var(--mono);
+      text-align: center;
+    }
+
+    .flow-list {
+      margin: 3rem 0 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: flow;
+    }
+
+    .flow-step {
+      counter-increment: flow;
+      display: grid;
+      grid-template-columns: 5rem minmax(0, 1fr);
+      gap: 1.5rem;
+      padding: 2rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .flow-step::before {
+      content: counter(flow, decimal-leading-zero);
+      color: var(--signal);
+      font-family: var(--mono);
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .flow-step p { margin: .65rem 0 0; }
+
+    .flow-step code,
+    p code,
+    li code,
+    td code {
+      padding: .08rem .28rem;
+      border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+      border-radius: 2px;
+      font-family: var(--mono);
+      font-size: .8em;
+      word-break: break-word;
+    }
+
+    .plane-tag {
+      display: inline-block;
+      margin-left: .5rem;
+      padding: .18rem .45rem;
+      color: var(--ink-soft);
+      border: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: .56rem;
+      letter-spacing: .1em;
+      vertical-align: .15em;
+      text-transform: uppercase;
+    }
+
+    .contract {
+      display: grid;
+      grid-template-columns: .85fr 1.15fr;
+      overflow: hidden;
+      margin-top: 2.5rem;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .contract-copy { padding: 2rem; }
+
+    .contract-copy ul {
+      margin: 1.5rem 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .contract-direction { margin-top: 3rem; }
+
+    pre {
+      overflow-x: auto;
+      margin: 0;
+      padding: 2rem;
+      color: var(--code-ink);
+      background: var(--code);
+      font-family: var(--mono);
+      font-size: .74rem;
+      line-height: 1.65;
+      tab-size: 2;
+    }
+
+    pre .dim { color: #93a79c; }
+    pre .hot { color: #ff9b72; }
+    pre .good { color: #86dbb8; }
+
+    .boundary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      margin-top: 3rem;
+      background: var(--line);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .boundary {
+      min-height: 270px;
+      padding: 1.7rem;
+      background: var(--paper);
+    }
+
+    .boundary .status {
+      display: inline-block;
+      margin-bottom: 2.5rem;
+      padding: .25rem .5rem;
+      color: var(--paper);
+      background: var(--signal);
+      font-family: var(--mono);
+      font-size: .58rem;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .boundary.caution .status { background: var(--warning); }
+    .boundary p { margin-bottom: 0; color: var(--ink-soft); }
+
+    .trust-stack {
+      display: grid;
+      gap: .8rem;
+      margin-top: 2.5rem;
+    }
+
+    .trust-row {
+      display: grid;
+      grid-template-columns: 9rem 1fr;
+      gap: 1.2rem;
+      padding: 1rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .trust-row b {
+      font-family: var(--sans);
+      font-size: .75rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .trust-row p { margin: 0; }
+
+    .callout {
+      margin: 3rem 0 0;
+      padding: 1.8rem;
+      border: 2px solid var(--warning);
+      background: var(--warning-wash);
+    }
+
+    .callout h3 { color: var(--warning); }
+    .callout p:last-child { margin-bottom: 0; }
+
+    .ops-table {
+      width: 100%;
+      margin-top: 2.5rem;
+      border-collapse: collapse;
+      font-size: .92rem;
+    }
+
+    .ops-table th,
+    .ops-table td {
+      padding: 1rem .8rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .ops-table th {
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .glossary-tools {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 2rem 0 1.3rem;
+      padding: .8rem 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .glossary-tools label {
+      font-family: var(--mono);
+      font-size: .65rem;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .glossary-tools input {
+      width: min(100%, 28rem);
+      padding: .7rem .9rem;
+      color: var(--ink);
+      background: color-mix(in srgb, var(--paper) 80%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 0;
+      font: 1rem var(--serif);
+    }
+
+    .glossary-count {
+      margin-left: auto;
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: .62rem;
+    }
+
+    .glossary {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+
+    .term {
+      min-height: 190px;
+      padding: 1.4rem;
+      background: var(--paper);
+    }
+
+    .term[hidden] { display: none; }
+
+    .term dt {
+      margin-bottom: 2.1rem;
+      font-family: var(--sans);
+      font-size: .85rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .term dd { margin: 0; color: var(--ink-soft); font-size: .92rem; }
+
+    .term .use {
+      display: block;
+      margin-top: .7rem;
+      color: var(--signal);
+      font-family: var(--mono);
+      font-size: .62rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem 2rem;
+      margin: 2.5rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .source-list a {
+      display: block;
+      padding: 1rem 0;
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: .75rem;
+    }
+
+    .page-footer {
+      padding: 2rem clamp(1.2rem, 4vw, 4.8rem);
+      color: var(--ink-soft);
+      background: var(--night);
+      font-family: var(--mono);
+      font-size: .65rem;
+      line-height: 1.6;
+    }
+
+    .page-footer .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 2rem;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .page-footer a { color: #8bd7b8; }
+
+    @media (max-width: 900px) {
+      .masthead { min-height: auto; }
+      .page-shell { grid-template-columns: 1fr; }
+      .contents { position: static; }
+      .contents ol { display: grid; grid-template-columns: repeat(2, 1fr); }
+      .contents li:nth-child(odd) { border-right: 1px solid var(--line); }
+      .principles { grid-template-columns: 1fr; }
+      .principle { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+      .principle:last-child { border-bottom: 0; }
+      .principle .index { margin-bottom: 1.5rem; }
+      .contract { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      body { font-size: 16px; background-size: 32px 100%, 100% 100%; }
+      .topbar .edition { display: none; }
+      .hero { width: min(100% - 2rem, 1180px); }
+      h1 { font-size: clamp(3.6rem, 21vw, 6rem); }
+      .lede { margin-left: 0; }
+      .signal-strip { grid-template-columns: repeat(4, 1fr); }
+      .signal-strip span:nth-child(4) { border-right: 0; }
+      .signal-strip span:nth-child(4)::after { display: none; }
+      .signal-strip span:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+      .page-shell { width: min(100% - 2rem, 1180px); padding-top: 3rem; }
+      .contents ol { grid-template-columns: 1fr; }
+      .contents li:nth-child(odd) { border-right: 0; }
+      section { padding-bottom: 4rem; }
+      section + section { padding-top: 4rem; }
+      .intro-grid, .boundary-grid, .credential-map, .glossary, .source-list { grid-template-columns: 1fr; }
+      .lane { grid-template-columns: 3rem 1fr; }
+      .lane-track { grid-template-columns: 1fr; }
+      .node { min-height: 90px; border-right: 0; border-bottom: 1px dashed var(--line); }
+      .node:last-child { border-bottom: 0; }
+      .node.arrow::after { content: "↓"; right: auto; top: auto; bottom: -.72rem; left: calc(50% - .62rem); }
+      .flow-step { grid-template-columns: 3.2rem 1fr; gap: .7rem; }
+      .trust-row { grid-template-columns: 1fr; gap: .4rem; }
+      .glossary-tools { align-items: stretch; flex-direction: column; }
+      .glossary-count { margin-left: 0; }
+      .page-footer .footer-inner { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .signal-strip span { animation: none; }
+    }
+
+    @media print {
+      :root { --paper: #fff; --paper-deep: #f4f1e8; --ink: #000; --ink-soft: #333; }
+      body { background: #fff; font-size: 11pt; }
+      .masthead { min-height: 0; }
+      .topbar, .contents, .glossary-tools, .page-footer { display: none; }
+      .hero { padding: 2cm 0 1.5cm; }
+      h1 { font-size: 54pt; }
+      .page-shell { display: block; width: auto; padding: 1cm 0; }
+      section { break-inside: avoid; padding-bottom: 1.5cm; }
+      .architecture, .principles, .contract, .boundary-grid, .glossary { box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the guide</a>
+
+  <header class="masthead">
+    <div class="topbar">
+      <a href="../README.md">iPXE Bootstrap / Field Notes</a>
+      <span class="edition">Frame role · implementation guide</span>
+    </div>
+
+    <div class="hero">
+      <p class="eyebrow">Camera-to-glass architecture</p>
+      <h1>A picture,<em>bootstrapped.</em></h1>
+      <p class="lede">
+        How a photograph moves from a phone camera into a Trip’s Published Roll,
+        through a read-only device grant, and onto an iPXE-booted display—without
+        making the private image public or putting a browser on the frame.
+      </p>
+    </div>
+
+    <div class="signal-strip" aria-label="Camera-to-display sequence">
+      <span>Capture</span>
+      <span>Contribute</span>
+      <span>Curate</span>
+      <span>Boot</span>
+      <span>Acknowledge</span>
+      <span>Fetch</span>
+      <span>Verify</span>
+      <span>Display</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <nav class="contents" aria-label="On this page">
+      <strong>On this page</strong>
+      <ol>
+        <li><a href="#purpose">The idea</a></li>
+        <li><a href="#architecture">The system</a></li>
+        <li><a href="#flow">The flow</a></li>
+        <li><a href="#contract">Media contract</a></li>
+        <li><a href="#security">Trust boundaries</a></li>
+        <li><a href="#operations">Operations</a></li>
+        <li><a href="#glossary">Glossary</a></li>
+        <li><a href="#source">Source map</a></li>
+      </ol>
+    </nav>
+
+    <main id="main">
+      <section id="purpose">
+        <p class="section-kicker">01 / The idea</p>
+        <h2>The frame owns no library.</h2>
+        <div class="intro-grid">
+          <p class="big-copy">
+            The frame is a <strong>RAM-only role</strong> for a netbooted machine.
+            A Contributor captures a photo and adds it to a Trip; the Organizer
+            chooses which Frames enter the Published Roll. The device receives
+            just enough configuration to read that Roll, caches authenticated
+            images in memory, and paints the current image to each display sink.
+          </p>
+          <aside class="margin-note">
+            <strong>Two meanings of “frame.”</strong> In Trips, a <em>Frame</em> is
+            one contributed photo or video. In iPXE, the <em>frame role</em> is the
+            device behavior that displays selected photo Frames. Keep the capital
+            product term and the machine role distinct in conversation.
+          </aside>
+        </div>
+
+        <div class="principles">
+          <article class="principle">
+            <span class="index">P—01</span>
+            <h3>Diskless by design</h3>
+            <p>The operating system, role configuration, image cache, and rendered preview all disappear at power-off.</p>
+          </article>
+          <article class="principle">
+            <span class="index">P—02</span>
+            <h3>Source stays authoritative</h3>
+            <p>The Organizer changes the Published Roll in Trips. The display node learns that curated set on its next manifest poll.</p>
+          </article>
+          <article class="principle">
+            <span class="index">P—03</span>
+            <h3>Human auth ≠ device auth</h3>
+            <p>The phone uses an Invite-backed browser session. The display uses a separate read-only bearer grant—never the Contributor’s cookie.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <p class="section-kicker">02 / The system</p>
+        <h2>Four planes. Trust stays in its lane.</h2>
+        <p class="big-copy">
+          Capture, boot, control, and media have different jobs and credentials.
+          They meet at one deliberate bridge: an operator stages the authenticated
+          manifest URL and its Trips Display Grant as the machine’s role config.
+        </p>
+
+        <div class="architecture" role="img" aria-label="Four-lane architecture diagram showing capture, boot, control, and media planes">
+          <div class="lane">
+            <div class="lane-name">Capture plane</div>
+            <div class="lane-track">
+              <div class="node arrow"><b>Phone camera</b><small>Creates the photograph</small></div>
+              <div class="node arrow"><b>Contributor</b><small>Invite-backed upload</small></div>
+              <div class="node arrow"><b>Trips</b><small>Original + viewing renditions</small></div>
+              <div class="node"><b>Published Roll</b><small>Organizer-selected Frames</small></div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-name">Boot plane</div>
+            <div class="lane-track">
+              <div class="node arrow"><b>PXE firmware</b><small>Requests boot information</small></div>
+              <div class="node arrow"><b>Bootstrap</b><small>Proxy DHCP + TFTP</small></div>
+              <div class="node arrow"><b>Custom iPXE</b><small>NTP + pinned TLS roots</small></div>
+              <div class="node"><b>Alpine overlay</b><small>Diskless userspace in RAM</small></div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-name">Control plane</div>
+            <div class="lane-track">
+              <div class="node arrow"><b>Machine record</b><small>Identity, state, architecture</small></div>
+              <div class="node arrow"><b>Assignment</b><small>role = frame</small></div>
+              <div class="node arrow"><b>Role ack</b><small>Consumes one boot nonce</small></div>
+              <div class="node"><b>Role config</b><small>Delivered in ack response</small></div>
+            </div>
+          </div>
+          <div class="lane">
+            <div class="lane-name">Media plane</div>
+            <div class="lane-track">
+              <div class="node arrow"><b>Frame source</b><small>Curated, authenticated service</small></div>
+              <div class="node arrow"><b>Manifest</b><small>Names, URLs, optional hashes</small></div>
+              <div class="node arrow"><b>RAM cache</b><small>Fetched + verified assets</small></div>
+              <div class="node"><b>Display sinks</b><small>HDMI · preview · optional e-ink</small></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="credential-map" aria-label="Three credentials with separate responsibilities">
+          <article class="credential">
+            <span class="credential-path">Person → Trip</span>
+            <h3>Invite-backed session</h3>
+            <p>Identifies the Contributor in a browser and authorizes uploads. It never reaches iPXE or the display node.</p>
+          </article>
+          <article class="credential">
+            <span class="credential-path">One boot → Role ack</span>
+            <h3>Role nonce</h3>
+            <p>Proves one RAM-role boot reached userspace. It is single-use and cannot read photographs.</p>
+          </article>
+          <article class="credential">
+            <span class="credential-path">Device → Published Roll</span>
+            <h3>Display Grant</h3>
+            <p>A long-lived, read-only Trips bearer token scoped to one Trip’s manifest and published image bytes.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="flow">
+        <p class="section-kicker">03 / The flow</p>
+        <h2>From camera glass to frame glass.</h2>
+        <p>
+          Capture and device boot are independent timelines. They meet at the
+          Published Roll: the phone contributes source material; the display
+          reads only the Organizer’s current published selection.
+        </p>
+        <ol class="flow-list">
+          <li class="flow-step">
+            <div>
+              <h3>The phone captures an Original <span class="plane-tag">Capture</span></h3>
+              <p>
+                A camera creates the full-fidelity photo and its available capture
+                metadata. Trips calls the bytes it receives the <strong>Original</strong>.
+                If a phone picker or export strips location before upload, the service
+                cannot recreate it; use an unmodified original when location matters.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>An Invite identifies the Contributor <span class="plane-tag">Capture</span></h3>
+              <p>
+                The Contributor redeems a Personal or Group Invite in the Trips web
+                UI. That establishes attribution through a signed browser session.
+                The person then chooses the photo from the phone—this human session
+                remains separate from every device credential later in the flow.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Trips preserves and prepares the Frame <span class="plane-tag">Capture</span></h3>
+              <p>
+                Trips stores the Original unchanged, records the Frame on the Trip’s
+                Roll, and creates web-friendly display and thumbnail renditions when
+                possible. Browser-extracted capture time, camera, dimensions, and
+                location feed the Trip’s who/what/where/when spine.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>The Organizer publishes a device Roll <span class="plane-tag">Curation</span></h3>
+              <p>
+                In Trips’ <strong>Published Roll</strong> surface, the Organizer
+                selects still Frames and publishes a new generation. For each photo,
+                Trips derives an authenticated JPEG from the Original with a long
+                edge no larger than 2000px, hashes the exact bytes, and stores them
+                by content identity. Videos contribute a poster when one exists.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>A separate Display Grant crosses the bridge <span class="plane-tag">Control</span></h3>
+              <p>
+                Trips shows a new read-only Display Grant once and stores only its
+                hash. The operator keeps the plaintext outside source control and
+                stages <code>{source, token}</code> in the iPXE machine’s protected
+                role config. The iPXE control plane must persist that plaintext so a
+                future RAM boot can receive it.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Firmware finds iPXE <span class="plane-tag">Boot</span></h3>
+              <p>
+                The site’s ordinary DHCP server still assigns the network address.
+                The bootstrap container answers only the PXE questions, selects an
+                architecture-specific binary, and serves it over TFTP.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>iPXE establishes transport trust <span class="plane-tag">Boot</span></h3>
+              <p>
+                The custom binary synchronizes time, then chains to the boot service
+                over HTTPS using root-certificate fingerprints compiled into the
+                binary. The control plane returns the diskless Alpine kernel,
+                initramfs, and boot parameters appropriate to the machine.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>The assigned role selects the path <span class="plane-tag">Control</span></h3>
+              <p>
+                A machine assigned the <code>frame</code> RAM role receives
+                <code>role=frame</code>, a non-secret machine identifier, and a fresh
+                single-use <code>role_nonce</code> on its kernel command line. Unlike
+                an install role, this path never partitions or writes local storage.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Userspace acknowledges this boot <span class="plane-tag">Control</span></h3>
+              <p>
+                The discovery overlay posts the nonce to <code>role-ack</code>. A
+                valid, unconsumed nonce marks the machine active and returns the
+                operator-staged role config. The config is written to a mode-0600
+                file in tmpfs; the raw HTTP response is private while parsed and is
+                then removed.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>The frame pulls the Published Roll <span class="plane-tag">Media</span></h3>
+              <p>
+                <code>frame-display</code> supervises the renderer. The renderer reads
+                the Trips manifest URL and Display Grant, sends the grant as an
+                <code>Authorization: Bearer</code> header, then repeats that header for
+                every asset URL returned by the manifest.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Showable assets are held in RAM <span class="plane-tag">Media</span></h3>
+              <p>
+                Asset URLs are resolved against the manifest URL. Optional SHA-256
+                values are checked before an image becomes showable. If a manifest
+                poll fails, the previous in-memory set remains available; an
+                individual asset that fails to fetch or verify is not displayed.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Composition is separate from output <span class="plane-tag">Display</span></h3>
+              <p>
+                Each image is resized to fit and letterboxed—never guessed-cropped—
+                for each sink. The HDMI framebuffer is written directly without X;
+                a preview PNG provides a hardware-free diagnostic surface; when its
+                optional runtime library is present, the e-ink sink refreshes only
+                when the image changes.
+              </p>
+            </div>
+          </li>
+          <li class="flow-step">
+            <div>
+              <h3>Telemetry observes; it does not serve media <span class="plane-tag">Operations</span></h3>
+              <p>
+                Boot beacons identify milestones. Heartbeats report what the node is
+                doing now. Out-of-band recovery is deliberately separate from the
+                rendering and photo-authentication paths—and must use RAM-role-aware
+                health rather than the age of the last boot acknowledgement.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="contract">
+        <p class="section-kicker">04 / Media contract</p>
+        <h2>Two authenticated reads.</h2>
+        <p class="big-copy">
+          The frame source contract is intentionally smaller than a gallery API.
+          A manifest names the current set; each listed URL returns bytes when
+          called with the same bearer header. Trips implements this contract as a
+          Trip-scoped Published Roll protected by a revocable Display Grant.
+        </p>
+
+        <div class="contract">
+          <div class="contract-copy">
+            <h3>Required behavior</h3>
+            <ul>
+              <li>Return JSON, not an HTML login or redirect.</li>
+              <li>Reject missing or invalid authorization.</li>
+              <li>Resolve relative asset URLs against the manifest URL.</li>
+              <li>Keep the source and every returned asset URL on trusted HTTPS origins.</li>
+              <li>Include SHA-256 when possible so truncated or altered fetches are rejected.</li>
+            </ul>
+          </div>
+          <pre aria-label="Frame source HTTP contract"><code><span class="dim"># 1. Read the curated set</span>
+GET https://photos.example/device/manifest
+<span class="hot">Authorization: Bearer &lt;display-grant&gt;</span>
+
+<span class="good">200 application/json</span>
+{
+  "images": [
+    {
+      "name": "mountain-dawn.jpg",
+      "url": "./assets/mountain-dawn.jpg",
+      "sha256": "&lt;64 hex characters&gt;"
+    }
+  ]
+}
+
+<span class="dim"># 2. Read each image with the same header</span>
+GET https://photos.example/device/assets/mountain-dawn.jpg
+<span class="hot">Authorization: Bearer &lt;display-grant&gt;</span>
+
+<span class="good">200 image/jpeg</span>
+&lt;image bytes&gt;</code></pre>
+        </div>
+
+        <h3 class="contract-direction">Compatibility direction: a Web App Manifest superset</h3>
+        <p>
+          The intended v2 shape is also a valid Web App Manifest: standard PWA
+          members keep their standard names and types, while <code>images</code>
+          and the richer frame members remain self-contained extensions. A PWA
+          user agent may ignore those extensions; the headless renderer ignores
+          PWA members it does not need.
+        </p>
+
+        <div class="contract">
+          <div class="contract-copy">
+            <h3>One shape, two consumers</h3>
+            <ul>
+              <li><code>name</code>, <code>icons</code>, <code>start_url</code>, colors, and standard <code>display</code> describe the installable Trip experience.</li>
+              <li><code>images</code> remains the fixed, generic frame contract already deployed.</li>
+              <li><code>frame_display</code>, <code>generation</code>, and <code>items</code> carry richer device synchronization data.</li>
+              <li>PWA <code>icons</code> are application identity artwork—not private slideshow Frames.</li>
+              <li>The target response uses <code>application/manifest+json</code>.</li>
+            </ul>
+          </div>
+          <pre aria-label="Target PWA-compatible frame manifest"><code>{
+  <span class="dim">"id"</span>: "/t/kyoto/",
+  <span class="dim">"short_name"</span>: "Kyoto",
+  <span class="dim">"name"</span>: "Kyoto Trip",
+  <span class="dim">"icons"</span>: [
+    {
+      "src": "/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  <span class="dim">"start_url"</span>: "/t/kyoto/",
+  <span class="dim">"scope"</span>: "/t/kyoto/",
+  <span class="dim">"display"</span>: <span class="good">"standalone"</span>,
+  <span class="dim">"orientation"</span>: "landscape",
+  <span class="dim">"theme_color"</span>: "#17211d",
+  <span class="dim">"background_color"</span>: "#efe9d8",
+
+  <span class="hot">"images"</span>: [
+    {
+      "name": "mountain-dawn.jpg",
+      "url": "./assets/mountain-dawn.jpg",
+      "sha256": "&lt;64 hex characters&gt;"
+    }
+  ],
+  "schemaVersion": 2,
+  "generation": 17,
+  <span class="hot">"frame_display"</span>: {
+    "width": 1600,
+    "height": 1200,
+    "profile": "spectra6-4x3-v1"
+  }
+}</code></pre>
+        </div>
+
+        <aside class="callout">
+          <h3>Shape compatibility is not shared authentication</h3>
+          <p>
+            Keep the browser’s cookie-authenticated <code>app.webmanifest</code>
+            and the device’s bearer-authenticated display manifest as separate
+            HTTP surfaces generated from shared PWA metadata. A browser manifest
+            <code>&lt;link rel="manifest"&gt;</code> fetch can include cookies with
+            <code>crossorigin="use-credentials"</code>, but that link provides no
+            mechanism to attach the frame’s bearer header. Never make the display
+            manifest or private image URLs public to gain PWA installability.
+          </p>
+        </aside>
+
+        <aside class="callout">
+          <h3>Required v1 → v2 migration</h3>
+          <p>
+            Today Trips uses top-level <code>display</code> for a device object,
+            which conflicts with the Web App Manifest string member. First teach
+            richer device readers to accept both v1’s <code>display</code> object
+            and v2’s <code>frame_display</code> object. Generate the standard PWA
+            subset once in Trips core: the browser manifest returns it, while the
+            display manifest merges in frame extensions. Then change the producer
+            to emit <code>schemaVersion: 2</code>, <code>display: "standalone"</code>,
+            those shared PWA members, and <code>application/manifest+json</code>.
+            The generic iPXE renderer already ignores unknown top-level members,
+            so its deployed <code>images</code> path needs no wire change.
+          </p>
+        </aside>
+      </section>
+
+      <section id="security">
+        <p class="section-kicker">05 / Trust boundaries</p>
+        <h2>Private photos. Explicit assumptions.</h2>
+        <p class="big-copy">
+          “RAM-only” describes the node, not the entire system. The control plane
+          must persist the role config so a future boot can receive it. Clear
+          language about where data lives is part of the security design.
+        </p>
+
+        <div class="boundary-grid">
+          <article class="boundary">
+            <span class="status">Public by design</span>
+            <h3>Code and boot artifacts</h3>
+            <p>
+              Repository contents, compiled bootstrap binaries, and the Alpine
+              overlay may be publicly downloadable. They must contain no private
+              keys, bearer tokens, LAN inventory, or operator-specific addresses.
+            </p>
+          </article>
+          <article class="boundary">
+            <span class="status">Persistent + protected</span>
+            <h3>Operator and control plane</h3>
+            <p>
+              Trips stores only the Display Grant’s hash. Its plaintext lives in
+              an operator secret store and in the control plane’s dashboard-protected
+              <code>role_config</code> record so future RAM boots can receive it.
+              It is runtime configuration, not source code, and is cleared with the role.
+            </p>
+          </article>
+          <article class="boundary">
+            <span class="status">Ephemeral</span>
+            <h3>Booted frame node</h3>
+            <p>
+              The role nonce is single-use. The delivered config is mode 0600 in
+              tmpfs. Images, composed canvases, and previews remain in RAM and die
+              with the boot. The Display Grant is not placed in a URL or process environment.
+            </p>
+          </article>
+          <article class="boundary caution">
+            <span class="status">Trust assumption</span>
+            <h3>Managed network + trusted source</h3>
+            <p>
+              This is not remote attestation. Early initramfs fetches include a
+              plain-HTTP overlay because RTC-less hardware cannot validate TLS at
+              that stage. The current design therefore assumes a managed LAN.
+            </p>
+          </article>
+        </div>
+
+        <div class="trust-stack">
+          <div class="trust-row">
+            <b>Human contribution</b>
+            <p>An Invite-backed browser session identifies the Contributor and attributes uploads. That session cookie never reaches the boot or media planes.</p>
+          </div>
+          <div class="trust-row">
+            <b>Organizer curation</b>
+            <p>Only the Organizer changes the Published Roll or creates and revokes Display Grants. A contributed Frame is not automatically device-visible.</p>
+          </div>
+          <div class="trust-row">
+            <b>Server identity</b>
+            <p>Custom iPXE validates the HTTPS boot service against certificate fingerprints compiled into the binary after an NTP clock sync.</p>
+          </div>
+          <div class="trust-row">
+            <b>Boot activation</b>
+            <p>A fresh, machine-bound, single-use nonce proves that a RAM-role boot reached userspace. It is not a reusable machine credential.</p>
+          </div>
+          <div class="trust-row">
+            <b>Operator control</b>
+            <p>Role assignment and role-config writes require dashboard authorization. The boot node cannot use its role nonce to rewrite its own configuration.</p>
+          </div>
+          <div class="trust-row">
+            <b>Photo access</b>
+            <p>A revocable Display Grant reads one Trip’s Published Roll and its prepared renditions. It does not grant upload, curation, or unrestricted Original access.</p>
+          </div>
+          <div class="trust-row">
+            <b>Content integrity</b>
+            <p>Optional per-image SHA-256 detects a bad or truncated asset fetch. It does not replace TLS or source authorization.</p>
+          </div>
+        </div>
+
+        <aside class="callout">
+          <h3>Three credentials. No reuse.</h3>
+          <p>
+            The Invite-backed session lets a person contribute; the role nonce
+            acknowledges one boot; the Display Grant reads one published device
+            view. None can substitute for another. The renderer sends its grant to
+            every asset URL in the authenticated manifest, including absolute URLs,
+            so use an HTTPS source that returns only same-origin—or deliberately
+            trusted—asset URLs. Never put the grant in a query string, kernel command
+            line, image name, log message, repository file, or public overlay.
+          </p>
+        </aside>
+      </section>
+
+      <section id="operations">
+        <p class="section-kicker">06 / Operations</p>
+        <h2>Change the source, not the frame.</h2>
+        <p class="big-copy">
+          Contributors add Frames through Trips; the Organizer controls the
+          Published Roll there. Device credential delivery happens at boot.
+          Rendering continues from RAM when the network has a bad afternoon.
+        </p>
+
+        <table class="ops-table">
+          <thead>
+            <tr>
+              <th>Operator intent</th>
+              <th>Change here</th>
+              <th>When the frame sees it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Contribute a new phone photo</td>
+              <td>Redeem an Invite and upload through the Trip UI</td>
+              <td>Immediately on the Trip’s Roll; not yet on the display</td>
+            </tr>
+            <tr>
+              <td>Change what the display shows</td>
+              <td>Select Frames and publish a generation in Trips’ Published Roll</td>
+              <td>Next successful manifest poll</td>
+            </tr>
+            <tr>
+              <td>Rotate the device credential</td>
+              <td>Revoke/create the Trips Display Grant, then update <code>role_config</code></td>
+              <td>Next reboot and role acknowledgement</td>
+            </tr>
+            <tr>
+              <td>Change the manifest endpoint</td>
+              <td>Control-plane <code>role_config.source</code></td>
+              <td>Next reboot</td>
+            </tr>
+            <tr>
+              <td>Update renderer or boot behavior</td>
+              <td>Build and publish a fresh Alpine overlay</td>
+              <td>Next netboot; verify artifact hashes</td>
+            </tr>
+            <tr>
+              <td>Recover a healthy, reachable node</td>
+              <td>Prefer a soft reboot over outlet power</td>
+              <td>Immediately; re-runs the complete netboot path</td>
+            </tr>
+            <tr>
+              <td>Recover an unreachable node</td>
+              <td>A RAM-role-aware out-of-band policy, with bounded retries</td>
+              <td>Only after health semantics identify a real stall</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <aside class="callout">
+          <h3>Deploy order is a wire contract</h3>
+          <p>
+            When node telemetry or boot parameters change, deploy the compatible
+            control plane first. Then rebuild the overlay from the same reviewed
+            source, publish it, compare local and remote hashes, and boot a node.
+            Green tests in separate repositories do not prove the cross-repo wire.
+          </p>
+        </aside>
+
+        <aside class="callout">
+          <h3>Do not arm the current age-based watchdog against a frame</h3>
+          <p>
+            A healthy frame acknowledges once per boot, then sends heartbeat events
+            without refreshing the machine row’s boot timestamp. A probe based only
+            on that timestamp eventually calls a healthy frame stale. Use the boot
+            feed or a RAM-role-aware stall verdict before enabling automatic power.
+          </p>
+        </aside>
+      </section>
+
+      <section id="glossary">
+        <p class="section-kicker">07 / Glossary</p>
+        <h2>Words we use on purpose.</h2>
+        <p>
+          These terms keep conversations precise across firmware, control-plane,
+          photo-service, and display work. Search by term or concept.
+        </p>
+
+        <div class="glossary-tools">
+          <label for="term-filter">Find a term</label>
+          <input id="term-filter" type="search" placeholder="Try “Invite”, “PWA”, or “display”…" autocomplete="off">
+          <span class="glossary-count" id="term-count" aria-live="polite">31 terms</span>
+        </div>
+
+        <dl class="glossary" id="term-list">
+          <div class="term">
+            <dt>Trip</dt>
+            <dd>The organizing boundary for one shared experience: its people, Frames, Places, Invites, and Published Roll.<span class="use">The device grant is scoped here</span></dd>
+          </div>
+          <div class="term">
+            <dt>Roll</dt>
+            <dd>The Trip’s reverse-chronological sequence of contributed Frames—the main “what happened?” surface for people.<span class="use">Human view, before device curation</span></dd>
+          </div>
+          <div class="term">
+            <dt>Frame</dt>
+            <dd>One photo or video contributed to a Trip. Capitalize the Trips product term when it could be confused with the iPXE frame role.<span class="use">Content item, not machine</span></dd>
+          </div>
+          <div class="term">
+            <dt>Original</dt>
+            <dd>The unchanged uploaded bytes Trips preserves as the source of truth. Device publication derives a smaller rendition; the display does not need Original access.<span class="use">Preserved source material</span></dd>
+          </div>
+          <div class="term">
+            <dt>Contributor</dt>
+            <dd>A person who enters through an Invite and adds Frames to a Trip. The signed browser session provides identity and attribution.<span class="use">Person who contributes</span></dd>
+          </div>
+          <div class="term">
+            <dt>Organizer</dt>
+            <dd>The person who governs the Trip: Invites, curation, Published Roll, and device grants. Use this product term rather than owner or admin.<span class="use">Person who curates</span></dd>
+          </div>
+          <div class="term">
+            <dt>Invite</dt>
+            <dd>The human access path into a Trip. Redeeming it establishes a browser session; it is not the credential used by a headless display.<span class="use">Person access, not device access</span></dd>
+          </div>
+          <div class="term">
+            <dt>Published Roll</dt>
+            <dd>The Organizer-selected, generated view a display may read. Publishing prepares stable image bytes and changes what the manifest exposes.<span class="use">Curated device view</span></dd>
+          </div>
+          <div class="term">
+            <dt>Display Grant</dt>
+            <dd>A revocable, read-only Trips bearer token scoped to one Trip’s Published Roll. Trips returns it once and persists only its hash.<span class="use">Device credential; never commit</span></dd>
+          </div>
+          <div class="term">
+            <dt>Frame-source rendition</dt>
+            <dd>A display-ready JPEG derived from the Original, limited to a 2000px long edge, hashed over its exact bytes, and stored by content identity.<span class="use">What the current frame fetches</span></dd>
+          </div>
+          <div class="term">
+            <dt>PWA-compatible superset</dt>
+            <dd>A JSON object whose standard Web App Manifest members retain their defined names and value types, with atomic frame-specific members added alongside them. Compatibility describes shape, not public reachability or browser authentication.<span class="use">Standard base + frame extensions</span></dd>
+          </div>
+          <div class="term">
+            <dt>Bootstrap</dt>
+            <dd>The site-local proxy DHCP and TFTP service that gives firmware the correct iPXE binary without replacing the site’s normal DHCP server.<span class="use">Say: bootstrap container</span></dd>
+          </div>
+          <div class="term">
+            <dt>Control plane</dt>
+            <dd>The service that owns machine records, role assignment, boot-script rendering, nonces, role configuration, and operational telemetry.<span class="use">Not: the photo host</span></dd>
+          </div>
+          <div class="term">
+            <dt>Data plane / media plane</dt>
+            <dd>The direct authenticated path from the frame node to the photo service. Private images do not pass through iPXE.<span class="use">Say: direct source fetch</span></dd>
+          </div>
+          <div class="term">
+            <dt>Machine / node</dt>
+            <dd>A physical or virtual computer known to the control plane. “Frame” names its assigned role, not its identity.<span class="use">Node = running machine</span></dd>
+          </div>
+          <div class="term">
+            <dt>Discovery OS</dt>
+            <dd>The small Alpine environment netbooted into RAM. It inventories, registers, acknowledges RAM-role boots, reports health, and starts role services.<span class="use">Diskless userspace</span></dd>
+          </div>
+          <div class="term">
+            <dt>apkovl / overlay</dt>
+            <dd>A gzipped filesystem overlay applied by Alpine’s initramfs before OpenRC starts. It carries the discovery and frame scripts, never runtime secrets.<span class="use">Artifact, not image library</span></dd>
+          </div>
+          <div class="term">
+            <dt>Role</dt>
+            <dd>Operator intent attached to a discovered machine. A role selects either a disk-install path or a RAM-only runtime path.<span class="use">Role = desired first behavior</span></dd>
+          </div>
+          <div class="term">
+            <dt>RAM role</dt>
+            <dd>A role that boots the diskless overlay with a role name on the kernel command line and writes nothing to local storage.<span class="use">Frame is a RAM role</span></dd>
+          </div>
+          <div class="term">
+            <dt>Assignment</dt>
+            <dd>The dashboard-authorized transition that binds a known machine to a role after architecture and lifecycle checks pass.<span class="use">Assign once; boot repeatedly</span></dd>
+          </div>
+          <div class="term">
+            <dt>Role nonce</dt>
+            <dd>A random, machine-bound, single-use value minted for one RAM-role boot. It proves that boot reached userspace and cannot be replayed.<span class="use">Credential for one acknowledgement</span></dd>
+          </div>
+          <div class="term">
+            <dt>Role acknowledgement</dt>
+            <dd>The boot-time POST that consumes the role nonce, marks the machine active, stamps its check-in time, and returns staged role configuration.<span class="use">Short form: role ack</span></dd>
+          </div>
+          <div class="term">
+            <dt>Role config</dt>
+            <dd>An operator-staged JSON object persisted by the control plane and delivered verbatim in the next role-ack response. For a frame it holds source and token.<span class="use">Courier payload</span></dd>
+          </div>
+          <div class="term">
+            <dt>Frame role</dt>
+            <dd>The aarch64 RAM role that starts the supervised image renderer and writes composed images to available sinks. Do not shorten it to “Frame” in Trips discussions.<span class="use">Machine role, not content item</span></dd>
+          </div>
+          <div class="term">
+            <dt>Frame source</dt>
+            <dd>The trusted photo service that authenticates the device bearer token and returns the curated manifest plus protected image bytes. Trips is the current reference source.<span class="use">Source stays authoritative</span></dd>
+          </div>
+          <div class="term">
+            <dt>Manifest</dt>
+            <dd>JSON containing an <code>images</code> array of names, URLs, and optional SHA-256 digests. In Trips it represents the current Published Roll generation.<span class="use">Machine-readable curated view</span></dd>
+          </div>
+          <div class="term">
+            <dt>Source token</dt>
+            <dd>The frame renderer’s generic name for its long-lived bearer credential. The Trips implementation calls this a Display Grant; it is unrelated to the role nonce.<span class="use">Generic implementation term</span></dd>
+          </div>
+          <div class="term">
+            <dt>Sink</dt>
+            <dd>An independent output adapter receiving a composed image: HDMI framebuffer, preview PNG, or an optional e-ink panel.<span class="use">Source → compose → sink</span></dd>
+          </div>
+          <div class="term">
+            <dt>Beacon</dt>
+            <dd>A one-shot report that proves the boot crossed a named runlevel milestone. It answers “did we get this far?”<span class="use">Milestone signal</span></dd>
+          </div>
+          <div class="term">
+            <dt>Heartbeat</dt>
+            <dd>A periodic report of current boot state, uptime, service progress, temperature, and board power health. It answers “what is it doing now?”<span class="use">Current-state signal</span></dd>
+          </div>
+          <div class="term">
+            <dt>Watchdog</dt>
+            <dd>An out-of-band recovery policy that may power-cycle a truly unreachable node with thresholds, drain time, backoff, and a hard cap. The current age-based probe is not frame-safe.<span class="use">Recovery, not liveness truth</span></dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="source">
+        <p class="section-kicker">08 / Source map</p>
+        <h2>Read the implementation next.</h2>
+        <p>
+          This page explains the model; the checked-in implementation remains
+          canonical. Local links follow the iPXE implementation; public repository
+          links show the companion Trips terms and authenticated source boundary.
+        </p>
+        <ul class="source-list">
+          <li><a href="../README.md">System overview → README.md</a></li>
+          <li><a href="../discovery/README.md">Diskless OS reference → discovery/README.md</a></li>
+          <li><a href="../build/embed.ipxe.template">Embedded chain script → build/embed.ipxe.template</a></li>
+          <li><a href="../discovery/overlay/etc/local.d/discovery.start">Role ack + config delivery → discovery.start</a></li>
+          <li><a href="../discovery/overlay/usr/local/bin/frame-display">Display supervision → frame-display</a></li>
+          <li><a href="../discovery/overlay/usr/local/bin/frame-render.py">Source, compose, sinks → frame-render.py</a></li>
+          <li><a href="../watchdog/README.md">Out-of-band recovery → watchdog/README.md</a></li>
+          <li><a href="https://github.com/fairchild/services/tree/main/ipxe">Companion control plane → fairchild/services/ipxe</a></li>
+          <li><a href="https://github.com/fairchild/trips/blob/main/CONTEXT.md">Trips product glossary → CONTEXT.md</a></li>
+          <li><a href="https://github.com/fairchild/trips/blob/main/src/core/frame-ingest.ts">Original + renditions → frame-ingest.ts</a></li>
+          <li><a href="https://github.com/fairchild/trips/blob/main/src/core/display.ts">Published Roll + Display Grants → display.ts</a></li>
+          <li><a href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest">Web App Manifest guide → MDN</a></li>
+          <li><a href="https://www.w3.org/TR/appmanifest/">Web App Manifest specification → W3C</a></li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <footer class="page-footer">
+    <div class="footer-inner">
+      <span>Open-source field guide · no secrets, machine identifiers, or private network details belong here.</span>
+      <span>Source is canonical · <a href="https://github.com/fairchild/ipxe">fairchild/ipxe</a></span>
+    </div>
+  </footer>
+
+  <script>
+    const input = document.querySelector("#term-filter");
+    const terms = [...document.querySelectorAll(".term")];
+    const count = document.querySelector("#term-count");
+
+    input?.addEventListener("input", () => {
+      const query = input.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      for (const term of terms) {
+        const match = !query || term.textContent.toLocaleLowerCase().includes(query);
+        term.hidden = !match;
+        if (match) visible += 1;
+      }
+      count.textContent = `${visible} ${visible === 1 ? "term" : "terms"}`;
+    });
+  </script>
+</body>
+</html>

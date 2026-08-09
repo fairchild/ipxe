@@ -219,6 +219,10 @@ use `after`. Tracked in `backlog/todo/openrc-crashed-services.md`.
 
 ## The frame role
 
+For a visual camera-to-glass explanation and the glossary used across Trips,
+the bootstrap, control plane, media source, and display layers, see the
+**[Frame role field guide](../docs/frame-role.html)**.
+
 A machine assigned `frame` (a `kind: "ram"` role — see the Worker's
 `roles.ts`) reboots into this same overlay with `role=frame`, a single-use
 `role_nonce`, and its `machine_id` on the kernel cmdline. `discovery.start`
