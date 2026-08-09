@@ -1,0 +1,26 @@
+name: Discovery Secret Test
+
+# Net-new because the role-ack response carries per-device bearer credentials;
+# the PXE boot lab stops before the Alpine discovery overlay executes.
+on:
+  push:
+    branches: [main]
+    paths: [discovery/**, .github/workflows/discovery-test.yml]
+  pull_request:
+    paths: [discovery/**, .github/workflows/discovery-test.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check POSIX shell
+        run: shellcheck -s sh discovery/overlay/etc/local.d/discovery.start discovery/test-secret-files.sh
+
+      - name: Test secret file lifecycle
+        run: discovery/test-secret-files.sh
