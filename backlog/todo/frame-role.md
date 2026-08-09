@@ -136,6 +136,22 @@ what makes "plug in an SD card" reproducible on the next Pi.
   rotates. Correct for truncation; a mismatch counter in heartbeat detail
   would make it fleet-visible if it ever recurs.
 
+## Trips integration — contract pinned 2026-08-09, iPXE half DONE
+
+Photos come from trips, authenticated end to end; iPXE never hosts them. The
+node's credential chain: nonce-proven role-ack delivers the operator-stored
+role config (`PUT /api/machines/:id/role-config`, dashboard-authed) — a
+`{source, token}` blob held in RAM at 0600. frame-render fetches `source`
+with `Authorization: Bearer <token>` expecting
+`{"images":[{name, url?, sha256?}]}`, resolves image URLs against the
+manifest, prefetches the whole set into RAM (network changes the set,
+display never needs it), and falls back to the Worker's test cards when no
+config is set. Proven on hardware including delivery and the authed fetch
+path. Remaining: the trips side (device/share token + machine-readable
+manifest for an operator-curated collection) — its agent has the contract;
+cutover is one PUT + one reboot. Retire the public `/frames/` test-card
+route once trips is live.
+
 ## Slices
 
 - **Slice 0 — image on glass** (bench, no merge): attach the panel, apk/pip
