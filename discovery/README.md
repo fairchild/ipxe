@@ -219,8 +219,8 @@ use `after`. Tracked in `backlog/todo/openrc-crashed-services.md`.
 
 ## The frame role
 
-For a visual end-to-end explanation and the glossary used across the bootstrap,
-control-plane, media-source, and display layers, see the
+For a visual camera-to-glass explanation and the glossary used across Trips,
+the bootstrap, control plane, media source, and display layers, see the
 **[Frame role field guide](../docs/frame-role.html)**.
 
 A machine assigned `frame` (a `kind: "ram"` role — see the Worker's
