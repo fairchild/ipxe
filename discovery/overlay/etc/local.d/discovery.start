@@ -190,7 +190,17 @@ build_inventory() {
 # ---- HTTP helpers ------------------------------------------------------------
 
 # http_post URL JSON_BODY [BEARER] -> writes body to $HTTP_BODY_FILE, echoes status
-HTTP_BODY_FILE="/tmp/discovery-http-body"
+HTTP_BODY_FILE="${HTTP_BODY_FILE:-/tmp/discovery-http-body}"
+ROLE_CONFIG_FILE="${ROLE_CONFIG_FILE:-/tmp/role-config.json}"
+
+prepare_http_body() {
+	# Responses can contain freshly minted credentials or per-role secrets.
+	# Recreate the shared scratch file privately before every request; merely
+	# chmodding it after parsing would leave a readable window.
+	umask 077
+	rm -f "$HTTP_BODY_FILE" && : > "$HTTP_BODY_FILE"
+}
+
 http_post() {
 	# Timeouts on both branches: an attempt that can hang is worse than one
 	# that fails, because every caller retries a failure but nothing rescues a
@@ -198,6 +208,10 @@ http_post() {
 	# stuck state reads as a stalled boot and invites a power cycle of a
 	# working node.
 	url="$1"; body="$2"; bearer="${3:-}"
+	if ! prepare_http_body; then
+		echo 000
+		return 0
+	fi
 	if command -v curl >/dev/null 2>&1; then
 		set -- -s -o "$HTTP_BODY_FILE" -w '%{http_code}' \
 			--connect-timeout 10 -m 30 \
@@ -224,7 +238,10 @@ http_post() {
 # http_get URL BEARER -> writes body to $HTTP_BODY_FILE, echoes status
 http_get() {
 	url="$1"; bearer="${2:-}"
-	: > "$HTTP_BODY_FILE"
+	if ! prepare_http_body; then
+		echo 000
+		return 0
+	fi
 	if command -v curl >/dev/null 2>&1; then
 		set -- -s -o "$HTTP_BODY_FILE" -w '%{http_code}'
 		[ -n "$bearer" ] && set -- "$@" -H "Authorization: Bearer $bearer"
@@ -364,11 +381,16 @@ ack_ram_role() {
 					cfg="$(jq -c '.config // empty' "$HTTP_BODY_FILE" 2>/dev/null)"
 					if [ -n "$cfg" ] && [ "$cfg" != "null" ]; then
 						umask 077
-						printf '%s' "$cfg" > /tmp/role-config.json
+						printf '%s' "$cfg" > "$ROLE_CONFIG_FILE"
 						log "role config received ($(printf '%s' "$cfg" | wc -c | tr -d ' ') bytes)"
 					fi
 				else
 					log "jq unavailable; role config (if any) not extracted"
+				fi
+				# The raw ack body duplicates the role secret. Keep only the
+				# minimal config consumed by the role service.
+				if ! rm -f "$HTTP_BODY_FILE"; then
+					log "could not remove role ack response at $HTTP_BODY_FILE"
 				fi
 				return 0
 				;;
