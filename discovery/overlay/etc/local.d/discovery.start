@@ -354,6 +354,22 @@ ack_ram_role() {
 		case "$status" in
 			200)
 				log "role ack accepted — machine $machine_id is active"
+				# The ack response carries the operator-set role config — the
+				# only way per-machine secrets (a photo source URL and its
+				# bearer token) reach a diskless node. Nested JSON, so this
+				# needs jq; without it the config is skipped and the role's
+				# service falls back to its default source. RAM only, 0600:
+				# it is a secret and it must die with the boot.
+				if command -v jq >/dev/null 2>&1; then
+					cfg="$(jq -c '.config // empty' "$HTTP_BODY_FILE" 2>/dev/null)"
+					if [ -n "$cfg" ] && [ "$cfg" != "null" ]; then
+						umask 077
+						printf '%s' "$cfg" > /tmp/role-config.json
+						log "role config received ($(printf '%s' "$cfg" | wc -c | tr -d ' ') bytes)"
+					fi
+				else
+					log "jq unavailable; role config (if any) not extracted"
+				fi
 				return 0
 				;;
 			403)
