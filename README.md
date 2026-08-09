@@ -2,6 +2,10 @@
 
 Proxy DHCP + TFTP container for network booting bare-metal machines into an iPXE boot menu. Runs alongside your existing DHCP server without interfering.
 
+The RAM-only picture-frame path has a standalone visual guide covering its
+boot flow, authenticated media contract, trust boundaries, and shared language:
+**[Frame role field guide](docs/frame-role.html)**.
+
 ## Quick Start
 
 ```bash
