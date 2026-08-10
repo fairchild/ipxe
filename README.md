@@ -5,7 +5,8 @@ Proxy DHCP + TFTP container for network booting bare-metal machines into an iPXE
 The RAM-only picture-frame path has a standalone visual guide tracing the full
 camera-to-glass path: Trips contribution and curation, credential boundaries,
 iPXE boot, authenticated media delivery, rendering, and shared language:
-**[Frame role field guide](docs/frame-role.html)**.
+**[Frame role field guide](https://fairchild.github.io/ipxe/frame-role.html)**
+([source](docs/frame-role.html)).
 
 ## Quick Start
 
@@ -32,7 +33,7 @@ Architecture is auto-detected: BIOS x86 (`undionly.kpxe`, with `ipxe.pxe` as a b
 
 The binaries are compiled from a pinned iPXE upstream commit in the image's builder stage — see [`build/`](build/). Each embeds the chain script and the trusted root-CA fingerprints, so the container makes no network fetches at startup and does not depend on iPXE's own CA infrastructure. The dnsmasq user-class stanza remains as a fallback for any stock iPXE binary but is no longer the primary path.
 
-Boards without an RTC, without PXE-capable firmware, or with a NIC the generic kernel can't bring up need more than the chain above. [`docs/pi4-uefi-netboot.md`](docs/pi4-uefi-netboot.md) collects what booting real Raspberry Pi 4 hardware turned up — clock-before-TLS, what pinned trust does to your choice of mirror, genet's missing PHY under ACPI, and which of those emulation can and can't catch.
+Boards without an RTC, without PXE-capable firmware, or with a NIC the generic kernel can't bring up need more than the chain above. The **[logbook](docs/logbook/)** collects what real hardware turned up — clock-before-TLS, what pinned trust does to your choice of mirror, genet's missing PHY under ACPI, and which of those emulation can and can't catch. It's published at [fairchild.github.io/ipxe](https://fairchild.github.io/ipxe/) alongside the field guides.
 
 ## Environment Variables
 
