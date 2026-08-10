@@ -1,6 +1,30 @@
-# Current state — 2026-08-08
+# Current state — 2026-08-09
 
 Written as a handoff. Read this first; it is the fastest path back into context.
+
+## 2026-08-09 — the frame gains a control loop (code complete, NOT deployed)
+
+The role-ack now hands a RAM boot a per-boot machine token alongside its
+config, and frame-render spends it once per pass: a five-field status out
+(image on glass, sink, showable count, manifest health, uptime), the
+operator's current role config back. A config edit reaches a live frame
+within one `FRAME_POLL` (≤300 s) instead of at next reboot, and
+`last_checkin` moves every pass — which, once deployed, makes the dashboard's
+stale badge honest for frames and retires the "never arm the watchdog against
+a frame" landmine. The display never depends on the control plane: no token
+file means no exchange and exactly the old behavior. Contract documented in
+`discovery/README.md` ("The control loop").
+
+The Worker half plus dashboard (frame-status section, role-config editor with
+server-side token redaction — `<redacted>` round-trips without exposing or
+clobbering the secret — and the reset/delete verbs) is two commits on
+`fairchild/services` branch `feat/ipxe-frame-dashboard` (worktree at
+`~/.worktrees/services/feat-ipxe-frame-dashboard`, branched from
+`feat/frame-source-config`, which is itself unmerged — merge order matters).
+249 tests green there; every new test was mutation-checked red. **Nothing is
+deployed**: Worker first, then rebuild and upload the overlay, verify the
+served hash — the checkin endpoint's `status` field does not exist in
+production yet.
 
 ## 2026-08-08 latest — the frame is on glass (HDMI)
 
