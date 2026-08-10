@@ -243,14 +243,60 @@ Sinks are independent and probed each pass:
   every poll pass to clean any text scribbled over it; tty1 keeps its getty
   underneath as the rescue path.
 - **Inky e-ink** (SPI, via the inky library's EEPROM auto-detect): refreshes
-  only on image change — a repaint costs ~half a minute of flashing.
-  **Absent until the vendored-wheels work lands** (`backlog/todo/
-  frame-role.md`, Slice 0b): the lib is pip-only and the node deliberately
-  installs nothing from PyPI at boot. Until then boots log
-  `no panel (No module named 'inky')`, honestly.
+  only on image change — a repaint costs ~half a minute of flashing. The
+  driver arrives in the display bundle (below); EEPROM auto-detect is the
+  primary path, with a named override for a board whose EEPROM does not
+  answer.
 - **Preview** (`/tmp/frame-preview.png`) when no display exists — the same
   pipeline minus the device write, which is what makes a frame testable
   over ssh.
+
+### The display bundle
+
+A frame is a RAM node: every boot builds its display stack from nothing. It
+builds it from one artifact this project controls, not from public APK
+mirrors and PyPI — a fleet whose every boot depends on two third parties is
+only as available as they are that morning, and what it ends up running is
+whatever they happened to hold that day.
+
+`build-display-bundle.sh` resolves the stack inside a container of the target
+architecture (the C extensions must be compiled against the same musl and
+CPython the node runs), records every name, version and SHA-256 in
+`display-bundle-<arch>.lock`, and emits a tarball:
+
+```bash
+./discovery/build-display-bundle.sh --update-lock   # re-resolve and re-pin
+./discovery/build-display-bundle.sh                 # rebuild, verifying the lock
+```
+
+Contents are 45 Alpine packages (python3, Pillow, numpy, ca-certificates and
+their closure) and 5 wheels Alpine does not carry (`inky`, `gpiodevice`,
+`gpiod`, `smbus2`, `spidev`). At boot, `frame-display` fetches the bundle
+named in `overlay/etc/frame-bundle.conf`, checks it against the SHA-256
+pinned there, installs the packages with `apk --no-network`, and unzips the
+wheels straight into site-packages. No resolver — and no network a resolver
+could reach — runs on the node.
+
+Two properties worth keeping:
+
+- **The bundle is byte-for-byte reproducible.** Two builds from one lock
+  produce one hash. Getting there needed `SOURCE_DATE_EPOCH`, `-g0`,
+  `-ffile-prefix-map` and `--build-id=none`, because `spidev` has no
+  musllinux wheel upstream and pip compiles it, embedding a build id and
+  build paths. The lock is what caught that.
+- **The apk half is pinned by verification, not by request.** `apk fetch`
+  accepts package names but silently rejects `name=version` constraints
+  (only `apk add` takes them), so the fetch resolves normally and the lock
+  diff refuses the result if anything moved.
+
+**Rollback.** The pin is two lines in `overlay/etc/frame-bundle.conf`, and
+bundles are immutable objects named for the lock that produced them, so the
+previous bundle stays fetchable after a new one is published. To roll back,
+restore the previous `BUNDLE_NAME`/`BUNDLE_SHA256` pair, rebuild the overlay,
+and upload it — no bundle is deleted or overwritten. `test-bundle-pin.sh`
+fails the build if the two lines disagree with the lock, which is the mistake
+that otherwise reaches a wall: a frame that boots, fetches a name that no
+longer matches its hash, and shows nothing.
 
 Publish images with the Worker repo's `scripts/publish-frames.sh <dir>` —
 it uploads the images *and* regenerates the manifest, which is the contract
