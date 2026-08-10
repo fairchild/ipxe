@@ -19,21 +19,20 @@ BOOTSTRAP_IMAGE="${BOOTSTRAP_IMAGE:-ipxe-bootstrap:lab}"
 LAB_IMAGE="${LAB_IMAGE:-ipxe-boot-lab:latest}"
 OUT="$REPO/lab/out"
 
-# The custom iPXE binaries bake their chain target in at build time (ARG
-# IPXE_SERVER_URL in bootstrap/Dockerfile → the embedded boot script), so the
-# mode is a property of the image, not just a runtime env. Point the embed at
-# the in-container HTTP stub for local (deterministic, offline) and the live
-# Worker for live. run-lab.sh points the proxy dnsmasq config at the same URL.
-LAB_STUB_URL="http://10.77.0.1:8080"   # br0 IP + stub port; see lab/run-lab.sh
+# The control-plane URL and proof remain runtime configuration in the managed
+# bootstrap. The device follows a static TFTP script to the site-local proxy;
+# only the proxy sends the bearer to the protected upstream.
+LAB_STUB_URL="http://10.77.0.1:8081"   # br0 IP + stub port; see lab/run-lab.sh
 if [ "$MODE" = "local" ]; then
-  CHAIN_URL="$LAB_STUB_URL"
+  UPSTREAM_URL="$LAB_STUB_URL"
+  BOOTSTRAP_TOKEN="${BOOTSTRAP_TOKEN:-test-bootstrap-proof-32-characters}"
 else
-  CHAIN_URL="$IPXE_SERVER_URL"
+  UPSTREAM_URL="$IPXE_SERVER_URL"
+  : "${BOOTSTRAP_TOKEN:?BOOTSTRAP_TOKEN is required in live mode}"
 fi
 
-echo "==> building bootstrap image ($BOOTSTRAP_IMAGE, embedded chain=$CHAIN_URL)"
+echo "==> building bootstrap image ($BOOTSTRAP_IMAGE)"
 docker build -t "$BOOTSTRAP_IMAGE" \
-  --build-arg IPXE_SERVER_URL="$CHAIN_URL" \
   -f "$REPO/bootstrap/Dockerfile" "$REPO"
 
 echo "==> building lab image ($LAB_IMAGE)"
@@ -47,7 +46,9 @@ docker run --rm --privileged \
   -e MODE="$MODE" \
   -e GUESTS="$GUESTS" \
   -e GUEST_TIMEOUT="$GUEST_TIMEOUT" \
-  -e IPXE_SERVER_URL="$IPXE_SERVER_URL" \
+  -e IPXE_SERVER_URL="$UPSTREAM_URL" \
+  -e BOOTSTRAP_TOKEN="$BOOTSTRAP_TOKEN" \
+  -e BOOTSTRAP_CLIENT_CIDR="10.77.0.0/24" \
   -v "$OUT:/lab/out" \
   "$LAB_IMAGE"
 rc=$?

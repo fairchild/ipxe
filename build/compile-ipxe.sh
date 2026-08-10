@@ -10,11 +10,10 @@
 # as a reference, never gated.
 set -eu
 
-: "${IPXE_SERVER_URL:=https://ipxe.cloudcompute.com}"
 : "${IPXE_REF:=v2.0.0}"
 : "${IPXE_COMMIT:=12798ec29aa8a64d8675c4378b99f5fe28447afb}"
 
-INPUT_DIR="${INPUT_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
+INPUT_DIR="${INPUT_DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)}"
 SRC_DIR="${SRC_DIR:-/opt/ipxe}"
 OUTPUT_DIR="${OUTPUT_DIR:-/out}"
 
@@ -31,9 +30,9 @@ if [ "${HEAD}" != "${IPXE_COMMIT}" ]; then
 fi
 echo "==> Verified pinned commit ${HEAD}"
 
-# Embedded boot script: retry DHCP, then chain to the boot menu over HTTPS.
-sed "s|__IPXE_SERVER_URL__|${IPXE_SERVER_URL}|g" \
-  "${INPUT_DIR}/embed.ipxe.template" > "${SRC_DIR}/src/embed.ipxe"
+# Embedded boot script: retry DHCP, then chain to the filename supplied by the
+# managed proxy. Endpoint and credential policy stay runtime configuration.
+cp "${INPUT_DIR}/embed.ipxe.template" "${SRC_DIR}/src/embed.ipxe"
 echo "==> Embedded script:"
 sed 's/^/    /' "${SRC_DIR}/src/embed.ipxe"
 

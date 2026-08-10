@@ -1,9 +1,13 @@
 #!ipxe
 # Embedded boot script compiled into every custom iPXE binary.
-# __IPXE_SERVER_URL__ is substituted at build time from ARG IPXE_SERVER_URL.
-# ${buildarch} is left for iPXE to expand at runtime (i386 / x86_64 / arm64),
-# matching the ?arch= param the Worker's arch-detector uses to filter the menu.
+# Runtime policy and endpoints are supplied by the managed PXE bootstrap named
+# in DHCP. No control-plane secret is baked into this public image.
 :retry
 dhcp || goto retry
-ntp time.cloudflare.com || ntp pool.ntp.org || echo No NTP - TLS may fail on RTC-less boards
-chain __IPXE_SERVER_URL__/boot.ipxe?arch=${buildarch} || goto retry
+isset ${filename} || goto no_boot_source
+chain ${filename} || goto retry
+
+:no_boot_source
+echo No PXE bootstrap script was supplied
+sleep 5
+goto retry

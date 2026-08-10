@@ -7,9 +7,9 @@ name: Boot Test
 on:
   push:
     branches: [main]
-    paths: [bootstrap/**, lab/**, scripts/test-boot.sh]
+    paths: [bootstrap/**, build/**, lab/**, scripts/test-boot.sh]
   pull_request:
-    paths: [bootstrap/**, lab/**, scripts/test-boot.sh]
+    paths: [bootstrap/**, build/**, lab/**, scripts/test-boot.sh]
   workflow_dispatch:
 
 permissions:

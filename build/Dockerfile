@@ -14,9 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
 
-ARG IPXE_SERVER_URL=https://ipxe.cloudcompute.com
-ENV IPXE_SERVER_URL=${IPXE_SERVER_URL}
-
 WORKDIR /build
 COPY . /build
 RUN OUTPUT_DIR=/out sh /build/compile-ipxe.sh

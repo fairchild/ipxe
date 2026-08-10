@@ -1,0 +1,5 @@
+#!ipxe
+# Public, non-secret device-side half of the managed bootstrap.
+:retry
+ntp time.cloudflare.com || ntp pool.ntp.org || echo No NTP - TLS may fail on RTC-less boards
+chain http://${next-server}:8080/boot.ipxe?arch=${buildarch}&mac=${net0/mac} || goto retry

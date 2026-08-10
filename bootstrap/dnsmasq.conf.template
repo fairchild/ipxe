@@ -3,8 +3,9 @@
 # supplies PXE boot information.
 #
 # Boot chain: firmware → TFTP (stock iPXE binary) → DHCP again →
-# dnsmasq hands iPXE the ${IPXE_SERVER_URL}/boot.ipxe URL →
-# iPXE chains to it over HTTPS → boot menu appears.
+# dnsmasq hands iPXE a non-secret TFTP bootstrap script → that script calls the
+# site-local boot proxy → the proxy adds server-side proof on its HTTPS request
+# to ${IPXE_SERVER_URL}/boot.ipxe → boot menu or assigned role appears.
 #
 # NOTE: in proxy mode dnsmasq answers PXE clients via pxe-service, NOT dhcp-boot
 # (dhcp-boot applies only when dnsmasq is the primary DHCP server; it is silently
@@ -37,10 +38,10 @@ pxe-service=tag:efi64,tag:!ipxe,  BC_EFI,     "iPXE (UEFI x86-64)", ipxe.efi
 pxe-service=tag:efi64,tag:!ipxe,  X86-64_EFI, "iPXE (UEFI x86-64)", ipxe.efi
 pxe-service=tag:arm64,tag:!ipxe,  ARM64_EFI,  "iPXE (UEFI ARM64)",  ipxe-arm64.efi
 
-# Stage 2 — iPXE has loaded and re-requests (user-class iPXE): hand it the boot
-# menu URL. iPXE interprets the HTTP/HTTPS URL in the filename field and chains
-# to it. This works with stock iPXE binaries — no custom build needed.
-pxe-service=tag:bios,tag:ipxe,   x86PC,      "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
-pxe-service=tag:efi64,tag:ipxe,  BC_EFI,     "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
-pxe-service=tag:efi64,tag:ipxe,  X86-64_EFI, "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
-pxe-service=tag:arm64,tag:ipxe,  ARM64_EFI,  "iPXE boot", ${IPXE_SERVER_URL}/boot.ipxe
+# Stage 2 — iPXE has loaded and re-requests (user-class iPXE): hand it a static,
+# non-secret bootstrap script. The long-lived bearer remains in the container;
+# the device receives only the upstream's short-lived, one-use role nonce.
+pxe-service=tag:bios,tag:ipxe,   x86PC,      "iPXE boot", bootstrap.ipxe
+pxe-service=tag:efi64,tag:ipxe,  BC_EFI,     "iPXE boot", bootstrap.ipxe
+pxe-service=tag:efi64,tag:ipxe,  X86-64_EFI, "iPXE boot", bootstrap.ipxe
+pxe-service=tag:arm64,tag:ipxe,  ARM64_EFI,  "iPXE boot", bootstrap.ipxe
