@@ -31,17 +31,20 @@ dhcp-match=set:arm64,option:client-arch,11   # UEFI ARM64
 # iPXE identifies itself with user-class "iPXE" on its second DHCP request.
 dhcp-userclass=set:ipxe,iPXE
 
-# Stage 1 — dumb firmware PXE (not yet iPXE): hand it the stock iPXE binary for
-# its architecture, served from our TFTP root.
-pxe-service=tag:bios,tag:!ipxe,   x86PC,      "iPXE (BIOS x86)",    undionly.kpxe
-pxe-service=tag:efi64,tag:!ipxe,  BC_EFI,     "iPXE (UEFI x86-64)", ipxe.efi
-pxe-service=tag:efi64,tag:!ipxe,  X86-64_EFI, "iPXE (UEFI x86-64)", ipxe.efi
-pxe-service=tag:arm64,tag:!ipxe,  ARM64_EFI,  "iPXE (UEFI ARM64)",  ipxe-arm64.efi
+# entrypoint.sh adds a managed tag for each BOOTSTRAP_ALLOWED_MACS entry and a
+# fail-closed dhcp-ignore rule for every other client.
+
+# Stage 1 — dumb firmware PXE (not yet iPXE): hand an explicitly managed client
+# the stock iPXE binary for its architecture, served from our TFTP root.
+pxe-service=tag:managed,tag:bios,tag:!ipxe,   x86PC,      "iPXE (BIOS x86)",    undionly.kpxe
+pxe-service=tag:managed,tag:efi64,tag:!ipxe,  BC_EFI,     "iPXE (UEFI x86-64)", ipxe.efi
+pxe-service=tag:managed,tag:efi64,tag:!ipxe,  X86-64_EFI, "iPXE (UEFI x86-64)", ipxe.efi
+pxe-service=tag:managed,tag:arm64,tag:!ipxe,  ARM64_EFI,  "iPXE (UEFI ARM64)",  ipxe-arm64.efi
 
 # Stage 2 — iPXE has loaded and re-requests (user-class iPXE): hand it a static,
 # non-secret bootstrap script. The long-lived bearer remains in the container;
 # the device receives only the upstream's short-lived, one-use role nonce.
-pxe-service=tag:bios,tag:ipxe,   x86PC,      "iPXE boot", bootstrap.ipxe
-pxe-service=tag:efi64,tag:ipxe,  BC_EFI,     "iPXE boot", bootstrap.ipxe
-pxe-service=tag:efi64,tag:ipxe,  X86-64_EFI, "iPXE boot", bootstrap.ipxe
-pxe-service=tag:arm64,tag:ipxe,  ARM64_EFI,  "iPXE boot", bootstrap.ipxe
+pxe-service=tag:managed,tag:bios,tag:ipxe,   x86PC,      "iPXE boot", bootstrap.ipxe
+pxe-service=tag:managed,tag:efi64,tag:ipxe,  BC_EFI,     "iPXE boot", bootstrap.ipxe
+pxe-service=tag:managed,tag:efi64,tag:ipxe,  X86-64_EFI, "iPXE boot", bootstrap.ipxe
+pxe-service=tag:managed,tag:arm64,tag:ipxe,  ARM64_EFI,  "iPXE boot", bootstrap.ipxe
