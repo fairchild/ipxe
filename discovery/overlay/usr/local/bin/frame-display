@@ -93,7 +93,16 @@ install_bundle() {
 	# --no-network is the assertion that matters: if the closure in the bundle
 	# is incomplete, this fails here instead of quietly reaching a mirror and
 	# hiding the gap until the day the mirror is down.
-	if ! apk add --no-network --allow-untrusted "$BUNDLE_DIR"/apks/*.apk >/dev/null 2>&1; then
+	#
+	# --force-non-repository is required, not optional, and only on a machine
+	# like this one: apk refuses to install a package that came from a file
+	# rather than a repository when the root runs from RAM, on the grounds
+	# that it will be lost at reboot. That is true and it is the intent — this
+	# node reinstalls its whole world every boot. Without the flag the install
+	# fails with "you tried to add a non-repository package to system", which
+	# is how this was found: on the node, not in a test.
+	if ! apk add --no-network --allow-untrusted --force-non-repository \
+		"$BUNDLE_DIR"/apks/*.apk >/dev/null 2>&1; then
 		log "apk install from bundle failed"
 		return 1
 	fi
