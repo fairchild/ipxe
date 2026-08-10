@@ -176,12 +176,18 @@ class ControlPlane:
                 token,
                 {"status": status},
             )
-            config = body.get("config") if isinstance(body, dict) else None
-            # Compare against the file rather than the loop's copy: the file
-            # is what the loop adopts from, so this cannot re-adopt what the
-            # ack already delivered on the first pass.
-            if isinstance(config, dict) and config != load_config():
-                self.adopt(config)
+            # An absent field means a Worker that predates config refresh; an
+            # explicit null means the operator cleared the config. Only the
+            # second may drop the RAM copy.
+            if isinstance(body, dict) and "config" in body:
+                config = body["config"]
+                # Compare against the file rather than the loop's copy: the
+                # file is what the loop adopts from, so this cannot re-adopt
+                # what the ack already delivered on the first pass.
+                if isinstance(config, dict) and config != load_config():
+                    self.adopt(config)
+                elif config is None and load_config() is not None:
+                    self.clear()
         except Exception as exc:  # noqa: BLE001 — the display outranks this
             self.failures += 1
             if self.failures == 1:
@@ -205,6 +211,16 @@ class ControlPlane:
         # O_CREAT's mode applies only on create; the ack may have made it.
         os.chmod(CONFIG_PATH, 0o600)
         log("checkin delivered a new role config; adopting it this pass")
+
+    def clear(self) -> None:
+        """The clear rides the same path as adoption: remove the file the loop
+        re-reads every pass, and the identity-change reset falls back to the
+        default source on its own."""
+        try:
+            os.remove(CONFIG_PATH)
+        except OSError:
+            return
+        log("checkin delivered a cleared role config; back to the default source")
 
 
 class FramebufferSink:

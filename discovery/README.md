@@ -283,11 +283,14 @@ show from RAM, `ok` is whether the last manifest fetch succeeded, and `up` is
 `/proc/uptime`. Flat, five fields, well under the Worker's 2048-byte cap on
 the status object.
 
-`config` is whatever the operator has set now, and is absent when they have
-set nothing. When it differs from the file in force, the render loop writes it
-to `/tmp/role-config.json` (0600) and the per-pass config re-read adopts it on
-the same pass — so a config change reaches a live frame within one `FRAME_POLL`
-(≤300 s) rather than at next reboot. Every failure — unreachable, 401,
+`config` is whatever the operator has set now. When it differs from the file
+in force, the render loop writes it to `/tmp/role-config.json` (0600) and the
+per-pass config re-read adopts it on the same pass — so a config change
+reaches a live frame within one `FRAME_POLL` (≤300 s) rather than at next
+reboot. An explicit `null` means the operator cleared the config: the frame
+removes its RAM copy and falls back to the default source the same way. The
+field *absent entirely* means a Worker that predates config refresh, and
+changes nothing — the two cases are deliberately distinct on the wire. Every failure — unreachable, 401,
 unparseable — is logged once per consecutive-failure streak and otherwise
 ignored, and a boot with no token file simply never checks in: the display does
 not depend on the control plane.
