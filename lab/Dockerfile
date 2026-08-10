@@ -30,12 +30,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Production artifacts, straight from the bootstrap image.
 COPY --from=bootstrap /tftpboot /tftpboot
 COPY --from=bootstrap /etc/dnsmasq.conf.template /etc/dnsmasq.conf.template
+COPY --from=bootstrap /usr/local/bin/boot-proxy /usr/local/bin/boot-proxy
 
 COPY run-lab.sh /usr/local/bin/run-lab.sh
 COPY dhcp-archmap.py /usr/local/bin/dhcp-archmap.py
+COPY auth-http-server.py /usr/local/bin/auth-http-server.py
 COPY dnsmasq-auth.conf.template /etc/dnsmasq-auth.conf.template
 COPY www /lab/www
-RUN chmod +x /usr/local/bin/run-lab.sh
+RUN chmod +x /usr/local/bin/run-lab.sh /usr/local/bin/auth-http-server.py
 
 ENV IPXE_SERVER_URL=https://ipxe.cloudcompute.com
 

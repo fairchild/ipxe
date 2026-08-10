@@ -4,10 +4,11 @@ title: iPXE Bootstrap
 
 A proxy DHCP + TFTP container that network-boots bare metal into an iPXE menu,
 alongside whatever DHCP server is already on the network. The iPXE binaries are
-compiled from pinned upstream source with the chain URL and a set of trusted
-root-CA fingerprints baked in, so a machine goes from power-on to a running node
-without touching iPXE's own CA infrastructure or downloading a boot script from
-anyone else.
+compiled from pinned upstream source with a DHCP-filename retry script and
+trusted root-CA fingerprints baked in. A non-secret TFTP script calls the
+site-local boot proxy; that proxy authenticates to the control plane over HTTPS.
+The long-lived bootstrap proof stays on the managed host instead of entering a
+public image, TFTP, or device RAM.
 
 Source, container image, and setup instructions:
 **[github.com/fairchild/ipxe](https://github.com/fairchild/ipxe)**.

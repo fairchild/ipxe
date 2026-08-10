@@ -1,8 +1,9 @@
 # build/ — custom iPXE compilation
 
 Compiles iPXE from a pinned upstream commit into four binaries, each with an
-embedded boot script (retry DHCP → chain to the boot menu over HTTPS) and a
-pinned set of trusted root-CA fingerprints. This replaces the stock binaries
+embedded boot script (retry DHCP → chain to its DHCP filename) and a pinned set
+of trusted root-CA fingerprints. The runtime bootstrap script, control-plane
+origin, and proof stay outside the binary. This replaces the stock binaries
 that used to be downloaded from `boot.ipxe.org` and validated TLS via
 `ca.ipxe.org`.
 
@@ -34,8 +35,7 @@ as a reference, not enforced. Integrity is enforced by the pinned commit.
 ## Building locally
 
 ```sh
-./build.sh                       # → build/dist/ + refreshes the sha256 record
-IPXE_SERVER_URL=https://example.com/ipxe ./build.sh   # override chain host
+./build.sh    # → build/dist/ + refreshes the sha256 record
 ```
 
 `build.sh` shells out to `docker build -o dist build`. The same

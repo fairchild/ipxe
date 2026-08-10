@@ -1,7 +1,7 @@
 # Builder stage: compile the custom iPXE binaries from a pinned upstream commit
 # (see build/compile-ipxe.sh — shared with the standalone build/Dockerfile so
 # the container ships exactly what build/build.sh produces). Each binary embeds
-# a retry→chain-over-HTTPS boot script and pinned root-CA fingerprints, so there
+# a retry→chain-to-DHCP-filename boot script and pinned root-CA fingerprints, so there
 # is no boot.ipxe.org download and no ca.ipxe.org trust dependency.
 #
 # Build context is the repo root: docker build -f bootstrap/Dockerfile .
@@ -15,24 +15,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
 
-# Bakes the chain URL into the embedded script. Override to point the compiled
-# binaries at a different boot menu host.
-ARG IPXE_SERVER_URL=https://ipxe.cloudcompute.com
-ENV IPXE_SERVER_URL=${IPXE_SERVER_URL}
-
 COPY build /build
 RUN OUTPUT_DIR=/tftpboot sh /build/compile-ipxe.sh
 
 FROM alpine:3.20
 
-RUN apk add --no-cache dnsmasq envsubst
+RUN apk add --no-cache ca-certificates dnsmasq envsubst python3
 
 COPY bootstrap/dnsmasq.conf.template /etc/dnsmasq.conf.template
+COPY bootstrap/boot-proxy.py /usr/local/bin/boot-proxy
+COPY bootstrap/entrypoint.sh /usr/local/bin/bootstrap-entrypoint
 COPY --from=builder /tftpboot /tftpboot
+COPY bootstrap/boot.ipxe /tftpboot/bootstrap.ipxe
+
+RUN chmod +x /usr/local/bin/boot-proxy /usr/local/bin/bootstrap-entrypoint
 
 ENV IPXE_SERVER_URL=https://ipxe.cloudcompute.com
 ENV DHCP_RANGE=192.168.1.0
+ENV BOOTSTRAP_CLIENT_CIDR=192.168.1.0/24
 
-EXPOSE 69/udp 4011/udp
+EXPOSE 69/udp 4011/udp 8080/tcp
 
-ENTRYPOINT ["/bin/sh", "-c", "envsubst < /etc/dnsmasq.conf.template > /etc/dnsmasq.conf && exec dnsmasq --no-daemon --log-queries"]
+ENTRYPOINT ["/usr/local/bin/bootstrap-entrypoint"]

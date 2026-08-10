@@ -6,7 +6,8 @@
 #   qemu guest(s) --tap--> br0 (10.77.0.1/24) <--- authoritative dnsmasq (leases)
 #                                              <--- proxy dnsmasq (boot info)
 #                            br0 --NAT--> eth0 --> internet (live HTTPS chain)
-#                            10.77.0.1:8080 python http (local chain stub)
+#                            10.77.0.1:8080 authenticated boot proxy
+#                            10.77.0.1:8081 protected local upstream stub
 #
 # The proxy runs the PRODUCTION config (bootstrap image, COPY --from), so the lab
 # exercises the real thing. The authoritative server stands in for the existing
@@ -76,7 +77,7 @@ start_servers() {
     || die "authoritative dnsmasq failed to start"
 
   export DHCP_RANGE="$SUBNET"
-  envsubst < /etc/dnsmasq.conf.template > "$OUT/dnsmasq-proxy.conf"
+  envsubst "\$DHCP_RANGE" < /etc/dnsmasq.conf.template > "$OUT/dnsmasq-proxy.conf"
   cat >> "$OUT/dnsmasq-proxy.conf" <<EOF
 
 # --- lab-only additions (pin to br0, separate log; no boot-semantics change) ---
@@ -85,15 +86,19 @@ bind-interfaces
 except-interface=lo
 log-facility=$OUT/proxy.log
 EOF
-  log "proxy dnsmasq (production config; IPXE_SERVER_URL=$IPXE_SERVER_URL)"
+  log "proxy dnsmasq (production config)"
   dnsmasq --conf-file="$OUT/dnsmasq-proxy.conf" --pid-file="$OUT/proxy.pid" \
     || die "proxy dnsmasq failed to start (config rejected)"
 
   if [ "$MODE" = "local" ]; then
-    log "http chain stub on $BR_IP:8080"
-    ( cd /lab/www && python3 -m http.server 8080 --bind "$BR_IP" ) > "$OUT/http.log" 2>&1 &
+    log "protected upstream stub on $BR_IP:8081"
+    ( cd /lab/www && /usr/local/bin/auth-http-server.py ) > "$OUT/http.log" 2>&1 &
     echo $! > "$OUT/http.pid"
   fi
+
+  log "site-local authenticated boot proxy on $BR_IP:8080"
+  BOOTSTRAP_PROXY_BIND="$BR_IP" /usr/local/bin/boot-proxy > "$OUT/boot-proxy.log" 2>&1 &
+  echo $! > "$OUT/boot-proxy.pid"
 }
 
 # ---------------------------------------------------------------------------
@@ -111,7 +116,7 @@ check() {                       # check <name> <logfile> <pattern>
 note_pass() { printf '    %-38s PASS\n' "$1"; PASS_N=$((PASS_N+1)); }
 note_fail() { printf '    %-38s FAIL\n' "$1"; FAIL_N=$((FAIL_N+1)); }
 
-http_hits() { local n; n="$(grep -ca 'GET /boot.ipxe' "$OUT/http.log" 2>/dev/null || true)"; echo "${n:-0}"; }
+http_hits() { local n; n="$(grep -caE '\"GET /boot\.ipxe[^\"]*\" 200 ' "$OUT/http.log" 2>/dev/null || true)"; echo "${n:-0}"; }
 
 # ---------------------------------------------------------------------------
 # Proxy contract (arch->binary handoff qemu can't exercise directly)
@@ -176,7 +181,7 @@ assert_common() {               # assert_common <guest> <archtag>
   local g="$1" tag="$2" ok=0
   check "authoritative leased an IP (DHCPACK)"  "$OUT/auth.log"  "DHCPACK" || ok=1
   check "proxy tagged arch ($tag)"              "$OUT/proxy.log" "tags:.*\\b$tag\\b" || ok=1
-  check "proxy handed iPXE the boot URL"        "$OUT/proxy.log" "bootfile name: .*/boot\\.ipxe" || ok=1
+  check "proxy handed iPXE bootstrap script"   "$OUT/proxy.log" "bootfile name: bootstrap\\.ipxe" || ok=1
   return $ok
 }
 
@@ -234,13 +239,31 @@ boot_efi_guest() {              # boot_efi_guest <guest> <archtag> <bootname> <c
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-[ "$MODE" = "local" ] && export IPXE_SERVER_URL="http://$BR_IP:8080"
+[ "$MODE" = "local" ] && export IPXE_SERVER_URL="http://$BR_IP:8081"
 : "${IPXE_SERVER_URL:=https://ipxe.cloudcompute.com}"
+: "${BOOTSTRAP_TOKEN:?BOOTSTRAP_TOKEN is required}"
+: "${BOOTSTRAP_CLIENT_CIDR:=$SUBNET/24}"
+: "${BOOTSTRAP_ALLOW_INSECURE_UPSTREAM:=}"
+[ "$MODE" = "local" ] && export BOOTSTRAP_ALLOW_INSECURE_UPSTREAM=1
+export IPXE_SERVER_URL BOOTSTRAP_TOKEN BOOTSTRAP_CLIENT_CIDR BOOTSTRAP_ALLOW_INSECURE_UPSTREAM
 log "mode=$MODE guests='$GUESTS' timeout=${GUEST_TIMEOUT}s"
 
 setup_network
 start_servers
 sleep 1
+
+if grep -R -F "$BOOTSTRAP_TOKEN" /tftpboot >/dev/null 2>&1; then
+  die "long-lived bootstrap proof leaked into a TFTP artifact"
+fi
+log "TFTP artifacts contain no long-lived bootstrap proof"
+
+if [ "$MODE" = "local" ]; then
+  unauth_status="$(curl -s -o /dev/null -w '%{http_code}' "$IPXE_SERVER_URL/boot.ipxe?arch=x86_64&mac=52:54:00:00:77:99")"
+  [ "$unauth_status" = "401" ] || die "protected upstream accepted an unauthenticated request"
+  proxy_status="$(curl -s -o /dev/null -w '%{http_code}' "http://$BR_IP:8080/boot.ipxe?arch=x86_64&mac=52:54:00:00:77:99")"
+  [ "$proxy_status" = "200" ] || die "boot proxy did not authenticate to the protected upstream"
+  log "wire proof: upstream rejects bare requests and accepts proxy-authenticated requests"
+fi
 
 echo; echo "==================== PROXY CONTRACT ===================="
 CONTRACT=PASS
