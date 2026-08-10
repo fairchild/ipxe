@@ -24,16 +24,29 @@ jobs:
           python-version: "3.11"
 
       - name: Check POSIX shell
-        run: shellcheck -s sh discovery/overlay/etc/local.d/discovery.start discovery/test-secret-files.sh
+        run: |
+          shellcheck -s sh \
+            discovery/overlay/etc/local.d/discovery.start \
+            discovery/overlay/usr/local/bin/frame-display \
+            discovery/test-secret-files.sh
 
-      - name: Check overlay builder
-        run: shellcheck -s bash discovery/build-overlay.sh
+      - name: Check bash builders
+        run: shellcheck -s bash discovery/build-overlay.sh discovery/build-display-bundle.sh
 
       - name: Test secret file lifecycle
         run: discovery/test-secret-files.sh
 
       - name: Test frame control loop
         run: python3 discovery/test-frame-control.py
+
+      - name: Test panel selection and sink reporting
+        run: python3 discovery/test-frame-panel.py
+
+      # The bundle the overlay pins must be the one the lock describes, or a
+      # frame boots, verifies a hash that does not match, and shows nothing.
+      # Cheap to check here; expensive to discover on a wall.
+      - name: Check the pinned bundle matches the lock
+        run: discovery/test-bundle-pin.sh
 
       - name: Build credential-free overlay
         run: AUTHORIZED_KEYS=/dev/null discovery/build-overlay.sh

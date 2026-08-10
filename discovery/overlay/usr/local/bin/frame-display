@@ -4,13 +4,24 @@
 # Ensures the display stack exists (this is a RAM node; every boot starts from
 # nothing), then hands off to the python loop. Runs under supervise-daemon, so
 # a crash respawns; the dependency fetch therefore lives here, inside the
-# supervised process, where a slow mirror delays the frame and nothing else.
+# supervised process, where a slow fetch delays the frame and nothing else.
+#
+# The stack comes from one versioned bundle this project builds and publishes
+# (discovery/build-display-bundle.sh), not from public APK mirrors and PyPI.
+# Two reasons. A frame that installs from third parties at every boot is only
+# as available as they are on the morning it reboots, and what it ends up
+# running is whatever those mirrors happened to hold that day. The bundle is
+# resolved once, pinned by hash here in the overlay, and served from the same
+# endpoint the node already trusts for its kernel and root filesystem — so it
+# adds no new dependency to a boot that is already talking to that endpoint.
 #
 # POSIX sh (busybox ash) only.
 
 set -u
 
 LOG_TAG="frame"
+BUNDLE_CONF=/etc/frame-bundle.conf
+BUNDLE_DIR=/tmp/display-bundle
 
 log() {
 	msg="[$LOG_TAG] $*"
@@ -25,27 +36,94 @@ modprobe spi-bcm2835 2>/dev/null || true
 modprobe spidev 2>/dev/null || true
 modprobe i2c-dev 2>/dev/null || true
 
-# py3-pillow lives in community; the netboot cmdline configures only main.
-ensure_repo() {
-	repos=/etc/apk/repositories
-	grep -q '/community$' "$repos" 2>/dev/null && return 0
-	main="$(grep '/main$' "$repos" 2>/dev/null | head -1)"
-	[ -n "$main" ] || return 1
-	echo "$main" | sed 's|/main$|/community|' >> "$repos"
+# Where the boot came from is where the bundle comes from: one endpoint, and
+# the kernel cmdline already records which one for this boot.
+api_base() {
+	base=$(sed -n 's/.*ipxe_api=\([^ ]*\).*/\1/p' /proc/cmdline 2>/dev/null)
+	[ -n "$base" ] || base="https://ipxe.cloudcompute.com"
+	echo "${base%/}"
+}
+
+# Already installed? A respawn after the loop crashed must not re-download
+# 27MB, and the import is the only honest test of "installed".
+stack_present() {
+	command -v python3 >/dev/null 2>&1 || return 1
+	python3 -c 'import PIL, numpy, inky' 2>/dev/null
+}
+
+install_bundle() {
+	[ -f "$BUNDLE_CONF" ] || { log "no $BUNDLE_CONF; cannot install display stack"; return 1; }
+	# shellcheck disable=SC1090
+	. "$BUNDLE_CONF"
+	[ -n "${BUNDLE_NAME:-}" ] && [ -n "${BUNDLE_SHA256:-}" ] || {
+		log "$BUNDLE_CONF is missing BUNDLE_NAME/BUNDLE_SHA256"
+		return 1
+	}
+
+	url="$(api_base)/assets/discovery/${BUNDLE_NAME}"
+	tgz="/tmp/${BUNDLE_NAME}"
+
+	if [ ! -f "$tgz" ]; then
+		log "fetching display bundle ${BUNDLE_NAME}"
+		# -T caps a stalled connection; a partial file fails the hash below
+		# rather than being installed, so there is no torn-download path.
+		if ! wget -q -T 60 -O "$tgz.part" "$url"; then
+			log "bundle fetch failed from ${url}"
+			rm -f "$tgz.part"
+			return 1
+		fi
+		mv "$tgz.part" "$tgz"
+	fi
+
+	got=$(sha256sum "$tgz" | awk '{print $1}')
+	if [ "$got" != "$BUNDLE_SHA256" ]; then
+		# Fail closed and discard. Installing unverified bytes is the one thing
+		# this path must never do, and keeping them would make the retry
+		# succeed at being wrong.
+		log "bundle hash mismatch (want ${BUNDLE_SHA256}, got ${got}); discarding"
+		rm -f "$tgz"
+		return 1
+	fi
+	log "bundle verified ${BUNDLE_SHA256}"
+
+	rm -rf "$BUNDLE_DIR"
+	mkdir -p "$BUNDLE_DIR"
+	tar -xzf "$tgz" -C "$BUNDLE_DIR" || { log "bundle extract failed"; return 1; }
+
+	# --no-network is the assertion that matters: if the closure in the bundle
+	# is incomplete, this fails here instead of quietly reaching a mirror and
+	# hiding the gap until the day the mirror is down.
+	if ! apk add --no-network --allow-untrusted "$BUNDLE_DIR"/apks/*.apk >/dev/null 2>&1; then
+		log "apk install from bundle failed"
+		return 1
+	fi
+
+	# Wheels are unzipped rather than pip-installed: none of them ship entry
+	# points or build steps, and unzipping keeps pip (and a resolver that would
+	# want a network) off the node entirely.
+	site=$(python3 -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null)
+	[ -n "$site" ] || { log "cannot locate site-packages"; return 1; }
+	for whl in "$BUNDLE_DIR"/wheels/*.whl; do
+		python3 -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+			"$whl" "$site" || { log "failed to unpack $(basename "$whl")"; return 1; }
+	done
+
+	# Free the tarball: this is a tmpfs root and 27MB of RAM is worth more to
+	# the image cache than to a file we have finished with.
+	rm -f "$tgz"
+	return 0
 }
 
 # Bounded, retried, and inside the supervised daemon — never in an openrc
-# start(), where a dead mirror would hold the runlevel (the sysinit lesson).
+# start(), where a slow fetch would hold the runlevel (the sysinit lesson).
 ensure_deps() {
-	# ca-certificates because the frames fetch gets 301'd to https (the zone's
-	# http exemptions cover only boot-critical paths) and urllib follows it.
-	command -v python3 >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null && return 0
-	ensure_repo || log "no main repo line found; apk will likely fail"
+	stack_present && return 0
 	tries=0
 	while [ "$tries" -lt 5 ]; do
 		tries=$((tries + 1))
-		log "installing python3 py3-pillow py3-numpy ca-certificates (attempt $tries)..."
-		if timeout 180 apk add --no-cache python3 py3-pillow py3-numpy ca-certificates >/dev/null 2>&1; then
+		log "installing display stack from bundle (attempt $tries)"
+		if install_bundle && stack_present; then
+			log "display stack ready"
 			return 0
 		fi
 		sleep 30
@@ -54,8 +132,9 @@ ensure_deps() {
 }
 
 if ! ensure_deps; then
-	# Exit nonzero: supervise-daemon respawns after respawn_delay, so a mirror
-	# outage becomes a retry loop with a heartbeat, not a dead frame.
+	# Exit nonzero: supervise-daemon respawns after respawn_delay, so an
+	# unreachable endpoint becomes a retry loop with a heartbeat, not a dead
+	# frame that reports healthy.
 	log "display deps unavailable; exiting for respawn"
 	exit 1
 fi

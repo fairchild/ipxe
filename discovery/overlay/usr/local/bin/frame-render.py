@@ -51,6 +51,10 @@ CONFIG_PATH = os.environ.get("FRAME_CONFIG", "/tmp/role-config.json")
 TOKEN_PATH = os.environ.get("FRAME_TOKEN", "/tmp/machine-token")
 MACHINE_ID_PATH = os.environ.get("FRAME_MACHINE_ID", "/tmp/machine-id")
 PREVIEW_RESOLUTION = (800, 480)
+# Role config wins over the environment; both stay empty in the normal case,
+# where the panel's own EEPROM is the answer. Named values are the keys of
+# PANEL_OVERRIDES below.
+PANEL_OVERRIDE = os.environ.get("FRAME_PANEL") or None
 
 
 def log(msg: str) -> None:
@@ -290,16 +294,50 @@ class FramebufferSink:
             fb.write(raw)
 
 
+# Driver and geometry for each panel we are willing to name, mirroring the
+# mapping inky's own auto-detect applies to an EEPROM variant byte. It exists
+# for the panel whose EEPROM cannot be read — an older board that shipped
+# without one, a ribbon seated well enough to drive pixels but not to answer
+# on I2C, or a bench rig with the ID pins unwired. Autodetect stays the
+# primary path precisely because it cannot be set wrong; an override is a
+# claim by an operator, and driving a panel with the wrong controller is how
+# these displays get damaged, so it is a deliberate act and not a default.
+PANEL_OVERRIDES: dict[str, tuple[str, str, tuple[int, int]]] = {
+    # name                  module              class          resolution
+    "impression-4": ("inky_uc8159", "Inky", (640, 400)),
+    "impression-5.7": ("inky_uc8159", "Inky", (600, 448)),
+    "impression-7.3": ("inky_ac073tc1a", "Inky", (800, 480)),
+    "spectra6-4": ("inky_e640", "Inky", (600, 400)),
+    "spectra6-7.3": ("inky_e673", "Inky", (800, 480)),
+    "spectra6-13.3": ("inky_el133uf1", "Inky", (1600, 1200)),
+}
+
+
 class PanelSink:
-    """The Inky e-ink panel, via EEPROM auto-detect — the fleet has two
-    different panels, which is the case auto-detect exists for."""
+    """The Inky e-ink panel. EEPROM auto-detect is the primary path — the
+    fleet has more than one panel, which is the case auto-detect exists for —
+    with a named override from role config or the environment for a board
+    whose EEPROM does not answer."""
 
     name = "panel"
 
-    def __init__(self) -> None:
-        from inky.auto import auto  # type: ignore
+    def __init__(self, override: str | None = None) -> None:
+        if override:
+            try:
+                module, cls_name, resolution = PANEL_OVERRIDES[override]
+            except KeyError:
+                raise ValueError(
+                    f"unknown panel override {override!r}; "
+                    f"known: {', '.join(sorted(PANEL_OVERRIDES))}"
+                ) from None
+            driver = __import__(f"inky.{module}", fromlist=[cls_name])
+            self.panel = getattr(driver, cls_name)(resolution=resolution)
+            self.detected_as = f"{override} (override)"
+        else:
+            from inky.auto import auto  # type: ignore
 
-        self.panel = auto()
+            self.panel = auto()
+            self.detected_as = type(self.panel).__name__
         self.resolution = self.panel.resolution
 
     def show(self, canvas) -> None:
@@ -350,6 +388,10 @@ def main() -> None:
     current_sha256: str | None = None
     current_sink: str | None = None
     manifest_ok = False
+    # Why there is no panel, in the words of the failed probe. Absent once one
+    # comes up. This is the field that keeps "showing on HDMI because the
+    # e-ink never initialised" from reading like a healthy frame.
+    panel_error: str | None = None
 
     log(f"loop starting — fallback source {fallback}, rotate {ROTATE_SECONDS}s")
     while True:
@@ -363,6 +405,7 @@ def main() -> None:
                     # enough to correlate the dashboard with a manifest entry.
                     "image_sha256": current_sha256,
                     "sink": current_sink,
+                    "panel_error": panel_error,
                     "images": len(showable),
                     "ok": manifest_ok,
                     "up": uptime_seconds(),
@@ -383,20 +426,41 @@ def main() -> None:
             # Probe for sinks that aren't up yet, every pass: device nodes and
             # libraries can appear after this process starts. A sink that
             # appears mid-run gets the current image immediately.
+            panel_override = (config or {}).get("panel") or PANEL_OVERRIDE
             for sink_type in SINK_TYPES:
                 if sink_type.name in sinks:
                     continue
                 try:
-                    sink = sink_type()
+                    sink = (
+                        sink_type(panel_override)
+                        if sink_type is PanelSink
+                        else sink_type()
+                    )
                     sinks[sink_type.name] = sink
                     probe_logged.discard(sink_type.name)
-                    log(f"sink up: {sink.name} {sink.resolution}")
+                    detail = getattr(sink, "detected_as", None)
+                    log(
+                        f"sink up: {sink.name} {sink.resolution}"
+                        + (f" [{detail}]" if detail else "")
+                    )
                 except Exception as exc:  # noqa: BLE001 — absent sink
+                    panel_error = (
+                        f"{exc.__class__.__name__}: {exc}"
+                        if sink_type is PanelSink
+                        else panel_error
+                    )
                     if sink_type.name not in probe_logged:
                         probe_logged.add(sink_type.name)
                         log(f"no {sink_type.name} ({exc.__class__.__name__}: {exc})")
+                else:
+                    if sink_type is PanelSink:
+                        panel_error = None
             active = list(sinks.values()) or [PreviewSink()]
-            current_sink = wire_sink(active[0].name)
+            # Every sink, not just the first. A frame with a monitor attached
+            # and a panel that never came up is a frame showing a picture on
+            # the wrong glass, and reporting only the framebuffer would make
+            # that read as success on the dashboard.
+            current_sink = "+".join(wire_sink(s.name) for s in active)
 
             # Poll the manifest and prefetch the whole set into RAM. Failure
             # here is logged and non-fatal: the frame keeps rotating through
