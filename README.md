@@ -17,8 +17,10 @@ docker run -d --net=host --cap-add=NET_ADMIN \
 ```
 
 `NET_ADMIN` is required — dnsmasq refuses to start without it. The environment
-file must supply a random `BOOTSTRAP_TOKEN` of at least 32 characters; keep that
-file outside the repository and readable only by its operator.
+file must supply a random `BOOTSTRAP_TOKEN` of at least 32 characters and a
+comma-separated `BOOTSTRAP_ALLOWED_MACS` allowlist. Keep that file outside the
+repository and readable only by its operator. The container fails closed when
+either value is absent.
 
 ## How It Works
 
@@ -29,10 +31,10 @@ authenticated HTTPS request to the control plane → boot menu or assigned role
 ```
 
 1. Machine powers on, firmware broadcasts PXE request
-2. dnsmasq (proxy DHCP) responds with a TFTP boot file — no IP assignment, your real DHCP handles that
+2. dnsmasq (proxy DHCP) responds only when the machine MAC is explicitly allowlisted — no IP assignment, your real DHCP handles that
 3. Firmware loads the custom iPXE binary via TFTP
 4. iPXE follows the DHCP filename to a static TFTP script, which passes its architecture and MAC to the site-local boot proxy
-5. The proxy checks that the client is in `BOOTSTRAP_CLIENT_CIDR`, adds the server-side bearer, and requests `<IPXE_SERVER_URL>/boot.ipxe` over HTTPS
+5. The proxy checks both `BOOTSTRAP_CLIENT_CIDR` and `BOOTSTRAP_ALLOWED_MACS`, adds the server-side bearer, and requests `<IPXE_SERVER_URL>/boot.ipxe` over HTTPS
 6. iPXE receives and runs the returned menu or role script; the long-lived bootstrap bearer never enters TFTP or device RAM
 
 Architecture is auto-detected: BIOS x86 (`undionly.kpxe`, with `ipxe.pxe` as a broken-UNDI fallback), UEFI x86-64, and UEFI ARM64.
@@ -40,7 +42,8 @@ Architecture is auto-detected: BIOS x86 (`undionly.kpxe`, with `ipxe.pxe` as a b
 The binaries are compiled from a pinned iPXE upstream commit in the image's builder stage — see [`build/`](build/). Each embeds the DHCP-filename retry script and trusted root-CA fingerprints, so the container does not depend on iPXE's own CA infrastructure. Stock iPXE follows the same DHCP-provided bootstrap script.
 
 The bearer proves that a request passed through the managed bootstrap; it is not
-device identity. The MAC selects a machine record but remains spoofable. The
+device identity. The MAC allowlist prevents the service from answering unrelated
+LAN clients, but a MAC remains spoofable and is only a machine selector. The
 device-side hop to the local proxy is plain HTTP, so the PXE network is a trust
 boundary: an on-path client could observe or race the short-lived, one-use role
 nonce returned by the control plane. Restrict the proxy to the boot VLAN or
@@ -56,6 +59,7 @@ Boards without an RTC, without PXE-capable firmware, or with a NIC the generic k
 | `IPXE_SERVER_URL` | `https://ipxe.cloudcompute.com` | HTTPS control-plane origin requested by the site-local boot proxy. |
 | `DHCP_RANGE` | `192.168.1.0` | Network for proxy DHCP (e.g. `192.168.1.0`) |
 | `BOOTSTRAP_CLIENT_CIDR` | `192.168.1.0/24` | Source network allowed to use the site-local boot proxy. Keep this as narrow as the PXE network permits. |
+| `BOOTSTRAP_ALLOWED_MACS` | none; required | Comma-separated MAC addresses that may receive PXE offers and use the proxy. The service fails closed without it. |
 | `BOOTSTRAP_TOKEN` | none; required | Random bearer shared only by the bootstrap container and control plane. Minimum 32 characters. Never commit it or place it in a TFTP artifact. |
 
 ## Architectures
@@ -75,6 +79,7 @@ services:
       - IPXE_SERVER_URL=https://ipxe.cloudcompute.com
       - DHCP_RANGE=${DHCP_RANGE:-192.168.1.0}
       - BOOTSTRAP_CLIENT_CIDR=${BOOTSTRAP_CLIENT_CIDR:-192.168.1.0/24}
+      - BOOTSTRAP_ALLOWED_MACS=${BOOTSTRAP_ALLOWED_MACS:?set in a mode-600 environment file}
       - BOOTSTRAP_TOKEN=${BOOTSTRAP_TOKEN:?set in a mode-600 environment file}
 ```
 
@@ -104,7 +109,7 @@ It builds the bootstrap image, builds the lab on top of it (consuming the
 - boots a **BIOS x86**, a **UEFI x86-64** (OVMF), and a **UEFI ARM64** (AAVMF)
   guest on a bridge, capturing serial + DHCP/HTTP logs;
 - asserts, per guest: the authoritative server leased the IP while the proxy
-  supplied boot info, the proxy tagged the arch, iPXE started and passed through
+supplied boot info only for allowlisted machines, the proxy tagged the arch, iPXE started and passed through
   the authenticated local proxy, and the chain reached the protected target. A
   **proxy contract** phase additionally verifies each
   arch → binary mapping (including UEFI arch 9, which no guest covers), that the
@@ -113,9 +118,9 @@ It builds the bootstrap image, builds the lab on top of it (consuming the
 
 Two modes: **local** (default) proxies to a protected in-container HTTP stub —
 deterministic, and what CI runs; **live** proxies to `${IPXE_SERVER_URL}` over
-HTTPS. Local mode proves that a bare upstream request gets `401`, a request
-through the boot proxy succeeds, and no TFTP artifact contains the long-lived
-proof. Per-guest logs land in `lab/out/`
+HTTPS. Local mode proves that a bare upstream request gets `401`, an allowlisted
+request through the boot proxy succeeds, a non-allowlisted request gets `403`,
+and no TFTP artifact contains the long-lived proof. Per-guest logs land in `lab/out/`
 (gitignored). CI runs BIOS + UEFI x86 in local mode on every PR that touches
 `bootstrap/` or `lab/` (`.github/workflows/boot-test.yml`).
 

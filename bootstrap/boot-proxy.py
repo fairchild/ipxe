@@ -28,6 +28,11 @@ TOKEN = os.environ["BOOTSTRAP_TOKEN"]
 if not TOKEN_RE.fullmatch(TOKEN):
     raise SystemExit("BOOTSTRAP_TOKEN must be 32+ URL-safe characters")
 CLIENT_CIDR = ipaddress.ip_network(os.environ["BOOTSTRAP_CLIENT_CIDR"])
+ALLOWED_MACS = {
+    mac.lower() for mac in os.environ["BOOTSTRAP_ALLOWED_MACS"].split(",")
+}
+if not ALLOWED_MACS or any(not MAC_RE.fullmatch(mac) for mac in ALLOWED_MACS):
+    raise SystemExit("BOOTSTRAP_ALLOWED_MACS must be comma-separated MAC addresses")
 UPSTREAM_PARTS = urlsplit(UPSTREAM)
 if not UPSTREAM_PARTS.hostname or UPSTREAM_PARTS.username or UPSTREAM_PARTS.password:
     raise SystemExit("IPXE_SERVER_URL must be an origin without credentials")
@@ -64,8 +69,12 @@ class BootProxyHandler(BaseHTTPRequestHandler):
         if not ARCH_RE.fullmatch(arch) or not MAC_RE.fullmatch(mac):
             self.send_error(HTTPStatus.BAD_REQUEST)
             return
+        normalized_mac = mac.lower()
+        if normalized_mac not in ALLOWED_MACS:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
 
-        upstream_url = f"{UPSTREAM}/boot.ipxe?{urlencode({'arch': arch, 'mac': mac.lower()})}"
+        upstream_url = f"{UPSTREAM}/boot.ipxe?{urlencode({'arch': arch, 'mac': normalized_mac})}"
         request = Request(
             upstream_url,
             headers={"Authorization": f"Bearer {TOKEN}", "Accept": "text/plain"},

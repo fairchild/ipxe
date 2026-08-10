@@ -78,6 +78,13 @@ start_servers() {
 
   export DHCP_RANGE="$SUBNET"
   envsubst "\$DHCP_RANGE" < /etc/dnsmasq.conf.template > "$OUT/dnsmasq-proxy.conf"
+  local old_ifs=$IFS mac
+  IFS=,
+  for mac in $BOOTSTRAP_ALLOWED_MACS; do
+    printf 'dhcp-mac=set:managed,%s\n' "$mac" >> "$OUT/dnsmasq-proxy.conf"
+  done
+  IFS=$old_ifs
+  printf 'dhcp-ignore=tag:!managed\n' >> "$OUT/dnsmasq-proxy.conf"
   cat >> "$OUT/dnsmasq-proxy.conf" <<EOF
 
 # --- lab-only additions (pin to br0, separate log; no boot-semantics change) ---
@@ -243,9 +250,10 @@ boot_efi_guest() {              # boot_efi_guest <guest> <archtag> <bootname> <c
 : "${IPXE_SERVER_URL:=https://ipxe.cloudcompute.com}"
 : "${BOOTSTRAP_TOKEN:?BOOTSTRAP_TOKEN is required}"
 : "${BOOTSTRAP_CLIENT_CIDR:=$SUBNET/24}"
+: "${BOOTSTRAP_ALLOWED_MACS:?BOOTSTRAP_ALLOWED_MACS is required}"
 : "${BOOTSTRAP_ALLOW_INSECURE_UPSTREAM:=}"
 [ "$MODE" = "local" ] && export BOOTSTRAP_ALLOW_INSECURE_UPSTREAM=1
-export IPXE_SERVER_URL BOOTSTRAP_TOKEN BOOTSTRAP_CLIENT_CIDR BOOTSTRAP_ALLOW_INSECURE_UPSTREAM
+export IPXE_SERVER_URL BOOTSTRAP_TOKEN BOOTSTRAP_CLIENT_CIDR BOOTSTRAP_ALLOWED_MACS BOOTSTRAP_ALLOW_INSECURE_UPSTREAM
 log "mode=$MODE guests='$GUESTS' timeout=${GUEST_TIMEOUT}s"
 
 setup_network
@@ -262,7 +270,9 @@ if [ "$MODE" = "local" ]; then
   [ "$unauth_status" = "401" ] || die "protected upstream accepted an unauthenticated request"
   proxy_status="$(curl -s -o /dev/null -w '%{http_code}' "http://$BR_IP:8080/boot.ipxe?arch=x86_64&mac=52:54:00:00:77:99")"
   [ "$proxy_status" = "200" ] || die "boot proxy did not authenticate to the protected upstream"
-  log "wire proof: upstream rejects bare requests and accepts proxy-authenticated requests"
+  rejected_status="$(curl -s -o /dev/null -w '%{http_code}' "http://$BR_IP:8080/boot.ipxe?arch=x86_64&mac=52:54:00:00:77:98")"
+  [ "$rejected_status" = "403" ] || die "boot proxy accepted a non-allowlisted machine"
+  log "wire proof: upstream rejects bare requests; proxy authenticates allowlisted machines and rejects others"
 fi
 
 echo; echo "==================== PROXY CONTRACT ===================="

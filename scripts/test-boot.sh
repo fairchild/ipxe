@@ -18,6 +18,7 @@ IPXE_SERVER_URL="${IPXE_SERVER_URL:-https://ipxe.cloudcompute.com}"
 BOOTSTRAP_IMAGE="${BOOTSTRAP_IMAGE:-ipxe-bootstrap:lab}"
 LAB_IMAGE="${LAB_IMAGE:-ipxe-boot-lab:latest}"
 OUT="$REPO/lab/out"
+BOOTSTRAP_ALLOWED_MACS="${BOOTSTRAP_ALLOWED_MACS:-52:54:00:00:77:01,52:54:00:00:77:02,52:54:00:00:77:03,52:54:00:00:77:99,52:54:00:00:77:a0,52:54:00:00:77:a7,52:54:00:00:77:a9,52:54:00:00:77:ab}"
 
 # The control-plane URL and proof remain runtime configuration in the managed
 # bootstrap. The device follows a static TFTP script to the site-local proxy;
@@ -49,6 +50,7 @@ docker run --rm --privileged \
   -e IPXE_SERVER_URL="$UPSTREAM_URL" \
   -e BOOTSTRAP_TOKEN="$BOOTSTRAP_TOKEN" \
   -e BOOTSTRAP_CLIENT_CIDR="10.77.0.0/24" \
+  -e BOOTSTRAP_ALLOWED_MACS="$BOOTSTRAP_ALLOWED_MACS" \
   -v "$OUT:/lab/out" \
   "$LAB_IMAGE"
 rc=$?
