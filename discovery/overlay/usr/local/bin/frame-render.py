@@ -23,6 +23,13 @@ the console scribbles on the shared surface), the Inky e-ink (image-change
 only — a refresh costs half a minute), and a preview PNG when no display
 exists (same pipeline minus the device write; the ssh-testable surface).
 
+Control. Each pass opens by trading a status report for the config the
+operator currently wants (POST /api/machines/<id>/checkin, carrying this
+boot's token from the role-ack), which is how a config change reaches a live
+frame within one poll instead of at next reboot. It is strictly optional: no
+token means no exchange and the loop behaves as it did before one existed,
+and any failure is logged once per streak and otherwise ignored.
+
 Stdlib + Pillow + numpy. The inky library (pip-only) is optional at runtime.
 """
 
@@ -41,6 +48,8 @@ POLL_SECONDS = int(os.environ.get("FRAME_POLL", "300"))
 ROTATE_SECONDS = int(os.environ.get("FRAME_ROTATE", "1800"))
 PREVIEW_PATH = os.environ.get("FRAME_PREVIEW", "/tmp/frame-preview.png")
 CONFIG_PATH = os.environ.get("FRAME_CONFIG", "/tmp/role-config.json")
+TOKEN_PATH = os.environ.get("FRAME_TOKEN", "/tmp/machine-token")
+MACHINE_ID_PATH = os.environ.get("FRAME_MACHINE_ID", "/tmp/machine-id")
 PREVIEW_RESOLUTION = (800, 480)
 
 
@@ -84,15 +93,134 @@ def load_config():
         return None
 
 
+def read_line(path: str) -> str | None:
+    """A one-line file discovery.start wrote, or None if this boot has none."""
+    try:
+        with open(path) as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def uptime_seconds() -> int:
+    """Monotonic and right on the first tick, which is what an RTC-less board
+    can honestly report about how long this boot has been running."""
+    try:
+        with open("/proc/uptime") as f:
+            return int(float(f.read().split()[0]))
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def wire_sink(name: str) -> str:
+    """The Worker's name for a sink. Only the e-ink differs — it is named for
+    the hardware on the wire and for its place in the pipeline here."""
+    return "inky" if name == "panel" else name
+
+
+# A named User-Agent, because the zone 403s urllib's default one
+# (Python-urllib/3.x reads as a bot upstream). Verified on hardware.
+USER_AGENT = "frame-display/1"
+
+
 def fetch(url: str, token: str | None = None, timeout: int = 30) -> bytes:
-    # A named User-Agent, because the zone 403s urllib's default one
-    # (Python-urllib/3.x reads as a bot upstream). Verified on hardware.
-    headers = {"User-Agent": "frame-display/1"}
+    headers = {"User-Agent": USER_AGENT}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as res:
         return res.read()
+
+
+def post_json(url: str, token: str, payload: dict, timeout: int = 10):
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers=headers, method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        return json.loads(res.read())
+
+
+class ControlPlane:
+    """The frame's half of the control loop: trade a status report for the
+    config the operator currently wants this machine to run.
+
+    The token is this boot's, minted by the role-ack and written to tmpfs by
+    discovery.start. With no token or no id there is no exchange at all. It
+    rides the same plain-HTTP base as the manifest — a clockless board cannot
+    do TLS at boot — so treat it as a LAN secret: it is scoped to one machine
+    and worthless the moment that machine reboots.
+
+    Failure is soft and reported once per consecutive-failure streak. At a
+    300 s cadence a night of unreachable control plane would otherwise write
+    a few hundred identical lines onto the console, which shares the glass
+    with the picture.
+    """
+
+    def __init__(self, base: str) -> None:
+        self.url_base = base
+        self.failures = 0
+
+    def exchange(self, status: dict) -> None:
+        token = read_line(TOKEN_PATH)
+        machine_id = read_line(MACHINE_ID_PATH)
+        if not token or not machine_id:
+            return
+        try:
+            body = post_json(
+                f"{self.url_base}/api/machines/{machine_id}/checkin",
+                token,
+                {"status": status},
+            )
+            # An absent field means a Worker that predates config refresh; an
+            # explicit null means the operator cleared the config. Only the
+            # second may drop the RAM copy.
+            if isinstance(body, dict) and "config" in body:
+                config = body["config"]
+                # Compare against the file rather than the loop's copy: the
+                # file is what the loop adopts from, so this cannot re-adopt
+                # what the ack already delivered on the first pass.
+                if isinstance(config, dict) and config != load_config():
+                    self.adopt(config)
+                elif config is None and load_config() is not None:
+                    self.clear()
+        except Exception as exc:  # noqa: BLE001 — the display outranks this
+            self.failures += 1
+            if self.failures == 1:
+                log(
+                    f"checkin failed ({exc.__class__.__name__}: {exc}); "
+                    "rendering continues"
+                )
+            return
+        if self.failures:
+            log(f"checkin recovered after {self.failures} failed passes")
+            self.failures = 0
+
+    def adopt(self, config: dict) -> None:
+        """Hand a new config to the loop the way the ack does — by writing the
+        file it re-reads every pass, so adoption and the cache reset ride the
+        path that already exists. 0600 because it carries the photo source's
+        bearer token, and this box keeps a getty on tty1."""
+        fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(config, f)
+        # O_CREAT's mode applies only on create; the ack may have made it.
+        os.chmod(CONFIG_PATH, 0o600)
+        log("checkin delivered a new role config; adopting it this pass")
+
+    def clear(self) -> None:
+        """The clear rides the same path as adoption: remove the file the loop
+        re-reads every pass, and the identity-change reset falls back to the
+        default source on its own."""
+        try:
+            os.remove(CONFIG_PATH)
+        except OSError:
+            return
+        log("checkin delivered a cleared role config; back to the default source")
 
 
 class FramebufferSink:
@@ -200,17 +328,37 @@ def compose(raw: bytes, resolution: tuple[int, int]):
 
 
 def main() -> None:
-    fallback = f"{api_base()}/frames/manifest.json"
+    base = api_base()
+    fallback = f"{base}/frames/manifest.json"
+    control = ControlPlane(base)
     sinks: dict[str, object] = {}
     probe_logged: set[str] = set()
     shown: dict[str, str] = {}
     config = None
     images: list[str] = []
     cache: dict[str, bytes] = {}
+    showable: list[str] = []
+    current: str | None = None
+    current_sink: str | None = None
+    manifest_ok = False
 
     log(f"loop starting — fallback source {fallback}, rotate {ROTATE_SECONDS}s")
     while True:
         try:
+            # First, so a config the operator changed since the last pass is
+            # the one this pass renders. The status describes the pass just
+            # finished — five short fields, far under the 2048-byte cap.
+            control.exchange(
+                {
+                    # Names come from a manifest this node does not author.
+                    "image": current[:200] if current else None,
+                    "sink": current_sink,
+                    "images": len(showable),
+                    "ok": manifest_ok,
+                    "up": uptime_seconds(),
+                }
+            )
+
             new_config = load_config()
             if new_config != config:
                 config = new_config
@@ -238,6 +386,7 @@ def main() -> None:
                         probe_logged.add(sink_type.name)
                         log(f"no {sink_type.name} ({exc.__class__.__name__}: {exc})")
             active = list(sinks.values()) or [PreviewSink()]
+            current_sink = wire_sink(active[0].name)
 
             # Poll the manifest and prefetch the whole set into RAM. Failure
             # here is logged and non-fatal: the frame keeps rotating through
@@ -261,7 +410,9 @@ def main() -> None:
                     cache[name] = raw
                 for gone in set(cache) - set(images):
                     del cache[gone]
+                manifest_ok = True
             except Exception as exc:  # noqa: BLE001 — keep showing the cached set
+                manifest_ok = False
                 log(
                     f"manifest poll failed ({exc.__class__.__name__}: {exc}); "
                     f"showing cached set of {len(cache)}"

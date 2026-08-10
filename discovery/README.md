@@ -258,6 +258,48 @@ it uploads the images *and* regenerates the manifest, which is the contract
 of wall clock, not local state, so every frame in a fleet shows the same
 picture and a reboot lands mid-schedule instead of restarting it.
 
+### The control loop
+
+The ack response carries a `token` alongside `config`: a machine token minted
+for this boot alone. `discovery.start` writes it to `/tmp/machine-token`
+(0600) beside the machine id in `/tmp/machine-id`, then removes the raw ack
+body. Nothing persists it — a reboot re-acks and gets a new one.
+
+`frame-render.py` spends it once per pass, before the manifest fetch:
+
+```http
+POST <api>/api/machines/<machine_id>/checkin
+Authorization: Bearer <this boot's token>
+
+{"status": {"image": "beach.jpg", "sink": "framebuffer",
+            "images": 12, "ok": true, "up": 3600}}
+
+200 {"id": "...", "state": "active", "config": { ...role config... }}
+```
+
+`image` is what is on the glass (null if nothing yet), `sink` is
+`framebuffer`, `inky`, `preview` or null, `images` counts what the frame can
+show from RAM, `ok` is whether the last manifest fetch succeeded, and `up` is
+`/proc/uptime`. Flat, five fields, well under the Worker's 2048-byte cap on
+the status object.
+
+`config` is whatever the operator has set now. When it differs from the file
+in force, the render loop writes it to `/tmp/role-config.json` (0600) and the
+per-pass config re-read adopts it on the same pass — so a config change
+reaches a live frame within one `FRAME_POLL` (≤300 s) rather than at next
+reboot. An explicit `null` means the operator cleared the config: the frame
+removes its RAM copy and falls back to the default source the same way. The
+field *absent entirely* means a Worker that predates config refresh, and
+changes nothing — the two cases are deliberately distinct on the wire. Every failure — unreachable, 401,
+unparseable — is logged once per consecutive-failure streak and otherwise
+ignored, and a boot with no token file simply never checks in: the display does
+not depend on the control plane.
+
+Deploy order is the same rule as the heartbeat's, for the same reason:
+**Worker first, then rebuild and upload the overlay.** The other order gives
+you a fleet posting check-ins at an endpoint that does not exist yet, with
+every test on both sides still green.
+
 ## Verify with QEMU
 
 The overlay was verified end-to-end against a local `wrangler dev` (see the

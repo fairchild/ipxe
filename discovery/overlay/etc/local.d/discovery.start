@@ -371,21 +371,34 @@ ack_ram_role() {
 		case "$status" in
 			200)
 				log "role ack accepted — machine $machine_id is active"
+				# This boot's identity, so the role's service can address the
+				# control plane without re-parsing /proc/cmdline. Not secret.
+				printf '%s' "$machine_id" > "$ID_FILE"
 				# The ack response carries the operator-set role config — the
 				# only way per-machine secrets (a photo source URL and its
-				# bearer token) reach a diskless node. Nested JSON, so this
-				# needs jq; without it the config is skipped and the role's
-				# service falls back to its default source. RAM only, 0600:
-				# it is a secret and it must die with the boot.
+				# bearer token) reach a diskless node — and a machine token
+				# minted for this boot alone, which the role's service spends
+				# on check-ins. Nested JSON, so the config needs jq; without
+				# it both are skipped, and the service falls back to its
+				# default source and never checks in. RAM only, 0600: they
+				# are secrets and they must die with the boot.
 				if command -v jq >/dev/null 2>&1; then
+					umask 077
 					cfg="$(jq -c '.config // empty' "$HTTP_BODY_FILE" 2>/dev/null)"
 					if [ -n "$cfg" ] && [ "$cfg" != "null" ]; then
-						umask 077
 						printf '%s' "$cfg" > "$ROLE_CONFIG_FILE"
 						log "role config received ($(printf '%s' "$cfg" | wc -c | tr -d ' ') bytes)"
 					fi
+					# Never echoed and never logged — the file is the only
+					# place this token exists.
+					tok="$(jq -r '.token // empty' "$HTTP_BODY_FILE" 2>/dev/null)"
+					if [ -n "$tok" ]; then
+						printf '%s' "$tok" > "$TOKEN_FILE"
+						tok=""
+						log "boot token saved to $TOKEN_FILE; check-ins enabled"
+					fi
 				else
-					log "jq unavailable; role config (if any) not extracted"
+					log "jq unavailable; role config and boot token (if any) not extracted"
 				fi
 				# The raw ack body duplicates the role secret. Keep only the
 				# minimal config consumed by the role service.
