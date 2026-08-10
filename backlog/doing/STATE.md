@@ -1,8 +1,37 @@
-# Current state — 2026-08-09
+# Current state — 2026-08-10
 
 Written as a handoff. Read this first; it is the fastest path back into context.
 
-## 2026-08-09 — the frame gains a control loop (code complete, NOT deployed)
+## 2026-08-10 — control loop MERGED AND DEPLOYED; one reboot from proven
+
+Both halves are in production. services#1239 (squash-merged) carried the
+Worker: `deploy-ipxe` ran on the merge push and applied D1 migration 0005
+before deploying — verified at the job level, then against the live API:
+the machine detail now carries `role_status`/`role_status_at` (null until a
+node reports one) and `role_config.token` reads back `<redacted>`. ipxe#22
+(squash-merged) carried the node half, including the late fix that honors an
+explicit `config: null` as "operator cleared it" — the Worker had grown that
+distinction (services `ab28b680`) after this section below was written, and
+the node ignored it; the fastest cross-repo drift yet, hours old.
+
+Overlay `a5b698b9…` built from the merged tree, uploaded, and the served
+hash matches the local build. Build input recovered the hard way:
+`discovery/authorized_keys` exists in no local checkout — it was extracted
+from the served overlay (`tar -xzOf … ./root/.ssh/authorized_keys`), which is
+the exact key the node already trusts and is a public half, safe to pull from
+the world-readable bucket.
+
+**What remains is one reboot.** The bench Pi still runs the old overlay
+(role_status null, last_checkin frozen at its last boot — checked, not
+assumed). `ssh -J <relay> root@<node> reboot`, ~110 s, then: role-ack mints
+the boot token, the first render pass posts status, `last_checkin` starts
+moving every ~5 min, the stale badge clears honestly, and the dashboard
+drawer's Frame status section fills in. That run is also the first real
+render of the drawer against production — worth eyes on the page. Until the
+reboot, old-overlay/new-Worker is a safe mix by construction: no token in
+RAM → no exchange attempted.
+
+## 2026-08-09 — the frame gains a control loop (code complete at the time; superseded above)
 
 The role-ack now hands a RAM boot a per-boot machine token alongside its
 config, and frame-render spends it once per pass: a five-field status out
