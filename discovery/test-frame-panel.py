@@ -140,17 +140,28 @@ class SinkReportingTests(unittest.TestCase):
         self.assertEqual(frame_render.wire_sink("framebuffer"), "framebuffer")
         self.assertEqual(frame_render.wire_sink("preview"), "preview")
 
-    def test_status_field_lists_every_sink_not_just_the_first(self) -> None:
+    def test_status_names_every_sink_not_just_the_first(self) -> None:
         """A frame with a monitor attached and a dead panel must not report
         the same string as a frame that is actually driving the e-ink."""
-        both = "+".join(
-            frame_render.wire_sink(n) for n in ("panel", "framebuffer")
-        )
-        hdmi_only = "+".join(frame_render.wire_sink(n) for n in ("framebuffer",))
+        sink = lambda name: types.SimpleNamespace(name=name)  # noqa: E731
+
+        both = frame_render.sink_status([sink("panel"), sink("framebuffer")])
+        hdmi_only = frame_render.sink_status([sink("framebuffer")])
+        panel_only = frame_render.sink_status([sink("panel")])
 
         self.assertEqual(both, "inky+framebuffer")
         self.assertEqual(hdmi_only, "framebuffer")
+        self.assertEqual(panel_only, "inky")
+        # The distinction that matters: painting HDMI with a dead panel reads
+        # differently from painting the panel.
         self.assertNotEqual(both, hdmi_only)
+        self.assertNotEqual(panel_only, hdmi_only)
+
+    def test_preview_only_is_reported_as_preview(self) -> None:
+        """The dry-run case must be nameable on the dashboard, not disguised
+        as a display."""
+        preview = types.SimpleNamespace(name="preview")
+        self.assertEqual(frame_render.sink_status([preview]), "preview")
 
 
 class ComposeTests(unittest.TestCase):

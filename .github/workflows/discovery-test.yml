@@ -39,6 +39,12 @@ jobs:
       - name: Test frame control loop
         run: python3 discovery/test-frame-control.py
 
+      # Pillow is what composes the photograph onto the panel's geometry, so
+      # without it the letterboxing test skips and the suite reports OK while
+      # checking nothing. Installed deliberately rather than left to skip.
+      - name: Install Pillow (the compose test is not optional)
+        run: pip install "pillow==11.2.1"
+
       - name: Test panel selection and sink reporting
         run: python3 discovery/test-frame-panel.py
 
