@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 iPXE bootstrap container — a proxy DHCP + TFTP server that network-boots bare-metal machines into an iPXE menu served by `ipxe.cloudcompute.com`. Runs alongside existing DHCP without interfering (proxy mode, no IP assignment).
 
-## Relationship to services/ipxe
+## Relationship to the control-plane service
 
-This repo builds and publishes the **bootstrap container** (`ghcr.io/fairchild/ipxe-bootstrap`). The companion repo ([fairchild/services](https://github.com/fairchild/services) under `ipxe/`) is a Cloudflare Worker that serves the boot menu, iPXE scripts, and binaries at `ipxe.cloudcompute.com`. The two repos form a complete system:
+This repo builds and publishes the **bootstrap container** (`ghcr.io/fairchild/ipxe-bootstrap`). A separately operated Cloudflare Worker serves the boot menu, iPXE scripts, and binaries at `ipxe.cloudcompute.com`. The two components form a complete system, but this public repository documents their wire contract without naming or linking the control-plane source repository:
 
 ```
-bootstrap container (this repo)          Worker service (services/ipxe)
+bootstrap container (this repo)          control-plane Worker
 ─────────────────────────────           ──────────────────────────────
 dnsmasq proxy DHCP + TFTP               Hono app on Cloudflare Workers
 Serves custom-compiled iPXE binaries    Generates iPXE boot menus
@@ -101,7 +101,8 @@ The chain URL is baked into the binaries at build time via `ARG IPXE_SERVER_URL`
 affects the legacy user-class fallback in `dnsmasq.conf.template`, not the
 embedded script.
 
-No unit tests in this repo — the container is tested by booting a machine. The Worker service has Vitest tests (`bun run test` in the services/ipxe repo).
+The container is tested by booting a machine. The separately operated Worker
+service has its own unit tests.
 
 ## CI/CD
 
@@ -122,7 +123,10 @@ GitHub Actions (`.github/workflows/build-push.yml`) triggers on changes to `boot
 5. User selects OS → Worker returns per-distro iPXE script → machine boots
 ```
 
-The `?arch=${buildarch}` param matches the Worker's arch-detector convention (`services/ipxe/src/scripts/templates.ts`) so menu filtering still works. The dnsmasq user-class stanza (second-DHCP → boot URL) stays as a fallback for stock binaries but is no longer load-bearing.
+The `?arch=${buildarch}` parameter matches the Worker's arch-detector
+convention so menu filtering still works. The dnsmasq user-class stanza
+(second-DHCP → boot URL) stays as a fallback for stock binaries but is no
+longer load-bearing.
 
 The architecture detection in `dnsmasq.conf.template` maps PXE client-arch options to binaries:
 - `0` → `undionly.kpxe` (BIOS x86; `ipxe.pxe` is also built as a broken-UNDI fallback)

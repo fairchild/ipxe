@@ -65,8 +65,9 @@ panels). Panel model comes from role config, not EEPROM autodetect. Use
 **Modules**: `spidev` and `i2c-dev` do not autoload — `/etc/modules` entries
 in the overlay (harmless on non-frame nodes).
 
-**Image source v1**: a `frames/` prefix in the existing R2 bucket, served by
-the Worker; publish = `wrangler r2 object put` + regenerate the manifest.
+**Fallback image source**: a `frames/` prefix in the existing R2 bucket,
+served by the Worker. It remains the no-config test-card path; assigned frames
+use the authenticated Trips source described below.
 
 **Card prep** (`scripts/build-pi-uefi-card.sh`, new): flash pftf release →
 `patch-rpi-uefi-vars.py set RPI_EFI.fd SystemTableMode=2` → append the three
@@ -93,18 +94,18 @@ what makes "plug in an SD card" reproducible on the next Pi.
 5. **The bench Pi 4 becomes the frame.** Confirmed — its card is already
    prepared. The lab loses its dedicated test node; wedge-style tests now need
    scheduling around the frame being on display.
-6. **V1 images from a `frames/` R2 prefix.** Confirmed. trips integration
-   stays future work.
+6. **V1 images from a `frames/` R2 prefix.** Confirmed as a fallback. The
+   production frame now uses an authenticated Trips Published Roll.
 
 ## Risks that remain
 
 - **The watchdog's freshness probe predates RAM roles.** `node_watchdog.py`
-  judges liveness by record age (`last_seen` preferred), and a frame node's
-  `last_seen` moves only at each boot's ack — a frame that stays up for days
-  looks dead to that probe. Before the watchdog is ever armed against the
-  frame Pi, it must learn RAM-role semantics (read the boot feed, or the
-  stall scan's verdict, instead of row age) or it will cycle a healthy frame
-  on schedule.
+  judges liveness by record age (`last_seen` preferred), and the deployed
+  frame moves that timestamp only at each boot's ack. The prepared control
+  loop fixes this with authenticated check-ins every render pass, but it is
+  not live until the Worker deploys first and a rebuilt overlay follows. Do
+  not arm the watchdog against the frame before both halves are deployed and
+  the dashboard shows fresh status from the physical Pi.
 
 - **NVRAM reversion**: DT mode lives inside `RPI_EFI.fd`; a reverted card is a
   dark panel with a healthy heartbeat. Card builder sets it; several cold
@@ -136,21 +137,31 @@ what makes "plug in an SD card" reproducible on the next Pi.
   rotates. Correct for truncation; a mismatch counter in heartbeat detail
   would make it fleet-visible if it ever recurs.
 
-## Trips integration — contract pinned 2026-08-09, iPXE half DONE
+## Trips integration — DONE 2026-08-09
 
 Photos come from trips, authenticated end to end; iPXE never hosts them. The
 node's credential chain: nonce-proven role-ack delivers the operator-stored
 role config (`PUT /api/machines/:id/role-config`, dashboard-authed) — a
-`{source, token}` blob held in RAM at 0600. frame-render fetches `source`
-with `Authorization: Bearer <token>` expecting
+`{source, token}` blob persisted by the iPXE control plane so future boots can
+receive it, then held by the Pi only in a 0600 RAM file. frame-render fetches
+`source` with `Authorization: Bearer <token>` expecting
 `{"images":[{name, url?, sha256?}]}`, resolves image URLs against the
 manifest, prefetches the whole set into RAM (network changes the set,
 display never needs it), and falls back to the Worker's test cards when no
-config is set. Proven on hardware including delivery and the authed fetch
-path. Remaining: the trips side (device/share token + machine-readable
-manifest for an operator-curated collection) — its agent has the contract;
-cutover is one PUT + one reboot. Retire the public `/frames/` test-card
-route once trips is live.
+config is set.
+
+Trips reuses a Trip-scoped Display Grant and an Organizer-curated Published
+Roll. Its manifest and every image route require the same bearer token; the
+manifest includes `images[{name,url,sha256}]` and is also a compatible Web App
+Manifest superset. The live HDMI frame proved the whole path after a boot-time
+config delivery: authenticated manifest and image fetches, digest verification,
+and local rotation from the prefetched set. The public `/frames/` route remains
+only as the explicit no-config fallback.
+
+Security boundary: Trips stores the grant hash, the iPXE control plane stores
+the courier payload needed for later reboots, and the Pi keeps the delivered
+plaintext only for the life of that RAM boot. "RAM-only" describes the node,
+not the end-to-end courier.
 
 ## Slices
 
@@ -162,7 +173,7 @@ route once trips is live.
   python3-dev musl-dev py3-pip`, `pip wheel inky`), upload to R2, teach
   `ensure_deps` to `pip install --no-index --find-links` them.
 - **Slice 1 — assign → zero-touch frame**: **DONE 2026-08-08**
-  (services#1212 + ipxe#13, deployed and proven on hardware). Assignment to
+  (control-plane and node changes deployed and proven on hardware). Assignment to
   active frame heartbeat in 88 s; second boot re-served the frame script
   from `active`; `wrangler tail` zero rejects; every new branch
   mutation-checked. Render is dry-run to `/tmp/frame-preview.png` pending
@@ -175,5 +186,16 @@ route once trips is live.
   repaint-every-pass because the console shares the surface) beside the Inky
   sink (image-change only) and the preview PNG. Cold netboot to picture on a
   1080p monitor: ~81 s. The Inky sink stays absent until Slice 0b.
+- **Slice 1c — authenticated Trips source**: **DONE 2026-08-09.** Trips
+  publishes an Organizer-controlled Roll through a Trip-scoped bearer grant;
+  iPXE delivers `{source, token}` at boot; the physical Pi fetched and displayed
+  a curated set with no public photo route.
+- **Slice 1d — live frame control loop**: **CODE COMPLETE, NOT DEPLOYED.** The
+  Worker accepts a small status object and returns current role config; the Pi
+  stores the role-ack token in RAM and exchanges once per render pass. The
+  server accepts that token until the next successful role-ack rotates its hash,
+  or an operator resets/deletes the machine; power loss alone is not expiry.
+  Deploy Worker first, then rebuild/upload the overlay, reboot the Pi, and
+  require a fresh dashboard status before enabling watchdog automation.
 - **Slice 2 — card builder**: `build-pi-uefi-card.sh` as above; a second Pi
   from blank card to frame with no manual UEFI or config.txt step.

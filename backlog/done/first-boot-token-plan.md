@@ -8,7 +8,7 @@ dependencies:
 
 # First-boot token identity + D1 machine registry
 
-**Repo: `~/code/services/ipxe`.**
+**Component: separately operated control-plane Worker.**
 
 Registration is about to drive provisioning decisions, so MAC-as-identity over unauthenticated GET must become TOFU (trust on first use): the first check-in from a new MAC mints a per-machine token; every later state-changing interaction requires it.
 
@@ -20,10 +20,10 @@ Design (agreed 2026-07-04):
 
 Keep the diff reviewable: registry + tokens only — no preseed serving, no role UI (that's role-assign-preseed-plan).
 
-Outcome: merge-ready PR against the services repo; PR body lists the wrangler D1 setup commands.
+Outcome: merge-ready control-plane change whose review notes list the Wrangler D1 setup commands.
 
 ---
 - 2026-07-04T18:31:48Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:32:30Z progress | agent dispatched, stacked worktree on fix/ipxe-boots-auth, branch feat/ipxe-machine-registry
 - 2026-07-04T18:41:18Z advanced to=done
-- 2026-07-04T18:41:18Z progress | PR=https://github.com/fairchild/services/pull/1069 56 tests pass, 0 new tsc errors; MACHINES D1 binding; 256-bit tokens hash-only; forward-only state map; D1 create/migrate are Michael's deploy steps
+- 2026-07-04T18:41:18Z progress | control-plane change passed 56 tests with 0 new tsc errors; MACHINES D1 binding; 256-bit tokens hash-only; forward-only state map; D1 create/migrate are Michael's deploy steps

@@ -10,7 +10,9 @@ trap 'rm -rf "$CASE_DIR"' EXIT HUP INT TERM
 
 HTTP_BODY_FILE="$CASE_DIR/http-body"
 ROLE_CONFIG_FILE="$CASE_DIR/role-config"
-export HTTP_BODY_FILE ROLE_CONFIG_FILE
+TOKEN_FILE="$CASE_DIR/machine-token"
+ID_FILE="$CASE_DIR/machine-id"
+export HTTP_BODY_FILE ROLE_CONFIG_FILE TOKEN_FILE ID_FILE
 
 # Load the production functions without invoking main. Keeping the test against
 # the shipped script avoids a second implementation of the secret lifecycle.
@@ -65,7 +67,7 @@ cmdline_value() {
 }
 
 http_post() {
-	printf '%s' '{"config":{"source":"https://trips.example/manifest","token":"test-secret"}}' > "$HTTP_BODY_FILE"
+	printf '%s' '{"config":{"source":"https://trips.example/manifest","token":"test-secret"},"token":"machine-boot-token"}' > "$HTTP_BODY_FILE"
 	printf '%s\n' 200
 }
 
@@ -80,6 +82,15 @@ ack_ram_role || fail "role ack failed"
 	fail "role config mode is $(file_mode "$ROLE_CONFIG_FILE"), expected 600"
 [ "$(jq -r '.token' "$ROLE_CONFIG_FILE")" = test-secret ] || \
 	fail "role config content was not preserved"
+[ -f "$TOKEN_FILE" ] || fail "role-ack machine token was not written"
+[ "$(file_mode "$TOKEN_FILE")" = 600 ] || \
+	fail "machine token mode is $(file_mode "$TOKEN_FILE"), expected 600"
+[ "$(cat "$TOKEN_FILE")" = machine-boot-token ] || \
+	fail "role-ack machine token content was not preserved"
+[ -f "$ID_FILE" ] || fail "machine id was not written"
+[ "$(file_mode "$ID_FILE")" = 600 ] || \
+	fail "machine id mode is $(file_mode "$ID_FILE"), expected 600"
+[ "$(cat "$ID_FILE")" = machine-test ] || fail "machine id content was not preserved"
 [ ! -e "$HTTP_BODY_FILE" ] || fail "raw role ack response still exists"
 
-echo "PASS: discovery HTTP secrets are private and raw role config is removed"
+echo "PASS: discovery HTTP secrets are private and raw role response is removed"

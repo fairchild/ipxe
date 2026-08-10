@@ -9,7 +9,7 @@ dependencies:
 
 # Role assignment → per-machine preseed → installed server checks in
 
-**Repo: `~/code/services/ipxe`.**
+**Component: separately operated control-plane Worker.**
 
 Closes the loop from `pending` machine to working server:
 1. **Assignment API**: `POST /api/machines/:id/assign { role }` (DASHBOARD_TOKEN-authed) sets state=assigned. `GET /api/machines/:id/assignment` (machine-token-authed) returns it — the discovery OS polls this.
@@ -22,10 +22,10 @@ Closes the loop from `pending` machine to working server:
 
 Verify end-to-end in QEMU: discovery → assign via curl → reboot → unattended Debian install → firstboot check-in flips state to active. Document the run in the PR.
 
-Outcome: merge-ready PR against the services repo.
+Outcome: merge-ready control-plane change.
 
 ---
 - 2026-07-04T19:06:33Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T19:07:18Z progress | role-preseed agent dispatched, branch feat/ipxe-role-preseed stacked on feat/ipxe-discovery-os (top of 4-PR chain)
 - 2026-07-04T19:22:01Z advanced to=done
-- 2026-07-04T19:22:01Z progress | PR=https://github.com/fairchild/services/pull/1071 90 tests; full curl loop verified vs wrangler dev; preseed validated w/ debconf-set-selections -c; token ROTATED at preseed-serve (fresh mint, nonce-gated single delivery); migration 0002 is Michael's deploy step
+- 2026-07-04T19:22:01Z progress | control-plane change passed 90 tests; full curl loop verified vs wrangler dev; preseed validated w/ debconf-set-selections -c; token ROTATED at preseed-serve (fresh mint, nonce-gated single delivery); migration 0002 is Michael's deploy step

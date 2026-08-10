@@ -1,4 +1,4 @@
-name: Discovery Secret Test
+name: Discovery Tests
 
 # Net-new because the role-ack response carries per-device bearer credentials;
 # the PXE boot lab stops before the Alpine discovery overlay executes.
@@ -14,13 +14,26 @@ permissions:
   contents: read
 
 jobs:
-  secret-files:
+  discovery:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Check POSIX shell
         run: shellcheck -s sh discovery/overlay/etc/local.d/discovery.start discovery/test-secret-files.sh
 
+      - name: Check overlay builder
+        run: shellcheck -s bash discovery/build-overlay.sh
+
       - name: Test secret file lifecycle
         run: discovery/test-secret-files.sh
+
+      - name: Test frame control loop
+        run: python3 discovery/test-frame-control.py
+
+      - name: Build credential-free overlay
+        run: AUTHORIZED_KEYS=/dev/null discovery/build-overlay.sh
