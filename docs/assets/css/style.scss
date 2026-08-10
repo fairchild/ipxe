@@ -1,0 +1,42 @@
+---
+---
+
+@import "{{ site.theme }}";
+
+/* Borrowed from the frame-role field guide so the two read as one site:
+   warm paper rather than white, and a green signal colour for links. */
+:root {
+  --paper: #efe9d8;
+  --ink: #17211d;
+  --ink-soft: #4d5b54;
+  --signal: #0e795e;
+  --line: #a69e89;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.page-header {
+  background-color: var(--ink);
+  background-image: none;
+}
+
+.main-content {
+  max-width: 46rem;
+
+  a {
+    color: var(--signal);
+  }
+
+  h2 {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.3em;
+  }
+
+  blockquote {
+    color: var(--ink-soft);
+    border-left-color: var(--line);
+  }
+}

@@ -1,0 +1,14 @@
+title: iPXE Bootstrap
+description: >-
+  Network booting bare metal into an iPXE menu — and a logbook of what the
+  hardware taught that no test could.
+theme: jekyll-theme-primer
+
+# Markdown pages here carry only a title; the layout comes from the theme.
+# frame-role.html has no front matter, so Jekyll copies it through untouched
+# and it keeps its own styling.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
