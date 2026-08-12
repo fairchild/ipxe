@@ -55,10 +55,10 @@ install_bundle() {
 	[ -f "$BUNDLE_CONF" ] || { log "no $BUNDLE_CONF; cannot install display stack"; return 1; }
 	# shellcheck disable=SC1090
 	. "$BUNDLE_CONF"
-	[ -n "${BUNDLE_NAME:-}" ] && [ -n "${BUNDLE_SHA256:-}" ] || {
+	if [ -z "${BUNDLE_NAME:-}" ] || [ -z "${BUNDLE_SHA256:-}" ]; then
 		log "$BUNDLE_CONF is missing BUNDLE_NAME/BUNDLE_SHA256"
 		return 1
-	}
+	fi
 
 	url="$(api_base)/assets/discovery/${BUNDLE_NAME}"
 	tgz="/tmp/${BUNDLE_NAME}"
