@@ -90,18 +90,30 @@ install_bundle() {
 	mkdir -p "$BUNDLE_DIR"
 	tar -xzf "$tgz" -C "$BUNDLE_DIR" || { log "bundle extract failed"; return 1; }
 
-	# --no-network is the assertion that matters: if the closure in the bundle
-	# is incomplete, this fails here instead of quietly reaching a mirror and
-	# hiding the gap until the day the mirror is down.
+	# Three flags, each load-bearing, each learned from the node rather than
+	# from documentation:
 	#
-	# --force-non-repository is required, not optional, and only on a machine
-	# like this one: apk refuses to install a package that came from a file
-	# rather than a repository when the root runs from RAM, on the grounds
-	# that it will be lost at reboot. That is true and it is the intent — this
-	# node reinstalls its whole world every boot. Without the flag the install
-	# fails with "you tried to add a non-repository package to system", which
-	# is how this was found: on the node, not in a test.
+	#   --no-network            the assertion that matters. An incomplete
+	#                           bundle fails here rather than quietly reaching
+	#                           a mirror and hiding the gap until the day that
+	#                           mirror is down.
+	#   --force-non-repository  apk refuses a package that came from a file
+	#                           when the root runs from RAM, because it will be
+	#                           lost at reboot. True, and the entire design —
+	#                           this node rebuilds its world every boot.
+	#   --repositories-file     without it the solver still reads the mirrors
+	#                           configured on the kernel cmdline, picks a
+	#                           dependency that exists only there, and fails
+	#                           with "masked in: --no-network" for a package
+	#                           the bundle deliberately does not carry. Pointing
+	#                           it at /dev/null says what is actually meant:
+	#                           resolve against this bundle and nothing else.
+	#
+	# The last one is why "it installed into a scratch root during testing" was
+	# not evidence — a fresh --initdb root has no repositories configured, so
+	# the test could not see the failure the real root has.
 	if ! apk add --no-network --allow-untrusted --force-non-repository \
+		--repositories-file /dev/null \
 		"$BUNDLE_DIR"/apks/*.apk >/dev/null 2>&1; then
 		log "apk install from bundle failed"
 		return 1
