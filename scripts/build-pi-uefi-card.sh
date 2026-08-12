@@ -71,6 +71,20 @@ done
 
 sha256_of() { { shasum -a 256 "$1" 2>/dev/null || sha256sum "$1"; } | awk '{print $1}'; }
 
+# Is this one of ours? Our binaries carry the boot script compiled in; a stock
+# iPXE does not, and booting one leaves a frame at an interactive prompt.
+#
+# Searched as raw bytes rather than through `strings | grep -q`: that pipeline
+# lies under `set -o pipefail`, because grep exits at the first match, strings
+# dies of SIGPIPE, and the pipeline reports failure for a binary that *did*
+# match. It rejected every good build until it was replaced.
+has_embedded_script() {
+	python3 - "$1" <<'PY'
+import sys
+sys.exit(0 if b"embed.ipxe" in open(sys.argv[1], "rb").read() else 1)
+PY
+}
+
 fetch_verified() { # url, dest, want_sha, label
 	local url="$1" dest="$2" want="$3" label="$4" got
 	if [ ! -f "${dest}" ]; then
@@ -165,16 +179,24 @@ PY
 		mdir -/ -b z: > /t/listing.txt
 	' >/dev/null 2>&1 || { echo "FAIL: could not read the filesystem"; rm -rf "${tmp}"; exit 1; }
 
+	# mdir writes the drive it was given ("z:/x" or "::/x" depending on version),
+	# so compare on the path and let the prefix be whatever it is.
+	sed -E 's#^(::|[A-Za-z]:)##' "${tmp}/listing.txt" | tr -d '\r' > "${tmp}/paths.txt"
+
 	local missing=0 f
-	for f in ::/RPI_EFI.fd ::/config.txt ::/start4.elf ::/fixup4.dat \
-		::/bcm2711-rpi-4-b.dtb ::/overlays/spi0-0cs.dtbo ::/EFI/BOOT/BOOTAA64.EFI; do
-		if grep -qxF "${f}" "${tmp}/listing.txt"; then
-			echo "    present: ${f#::/}"
+	for f in /RPI_EFI.fd /config.txt /start4.elf /fixup4.dat \
+		/bcm2711-rpi-4-b.dtb /overlays/spi0-0cs.dtbo /EFI/BOOT/BOOTAA64.EFI; do
+		if grep -qxF "${f}" "${tmp}/paths.txt"; then
+			echo "    present: ${f#/}"
 		else
-			echo "    MISSING: ${f#::/}"
+			echo "    MISSING: ${f#/}"
 			missing=1
 		fi
 	done
+	if [ "${missing}" -ne 0 ]; then
+		echo "    --- what the filesystem actually contains ---"
+		sed 's/^/      /' "${tmp}/paths.txt" | head -20
+	fi
 	# AppleDouble sidecars are what a macOS copy leaves behind; they are junk on
 	# a FAT boot partition and a sign the image was assembled outside this script.
 	if grep -qE '/\._' "${tmp}/listing.txt"; then
@@ -196,7 +218,7 @@ PY
 
 	# iPXE: ours, or nothing. A stock binary boots to a shell and waits for a
 	# human, which on a wall-mounted frame is indistinguishable from dead.
-	if ! strings "${tmp}/BOOTAA64.EFI" 2>/dev/null | grep -q "embed.ipxe"; then
+	if ! has_embedded_script "${tmp}/BOOTAA64.EFI"; then
 		echo "    FAIL: BOOTAA64.EFI has no embedded script — not our iPXE build"
 		rm -rf "${tmp}"; exit 1
 	fi
@@ -252,7 +274,7 @@ ERROR: no custom iPXE binary at ${IPXE_BINARY}
 EOF
 	exit 1
 fi
-if ! strings "${IPXE_BINARY}" 2>/dev/null | grep -q "embed.ipxe"; then
+if ! has_embedded_script "${IPXE_BINARY}"; then
 	echo "ERROR: ${IPXE_BINARY} has no embedded script — that is a stock build." >&2
 	echo "       Rebuild with ./build/build.sh" >&2
 	exit 1
@@ -342,7 +364,12 @@ install -m 0644 "${IPXE_BINARY}" "${STAGE}/EFI/BOOT/BOOTAA64.EFI"
 find "${STAGE}" -exec touch -t "${FIXED_DATE}" {} +
 
 IMG="${WORK}/card.img"
+# SOURCE_DATE_EPOCH is what makes two builds the same bytes. Fixed mtimes on
+# the staged files are not enough: a FAT directory entry also records creation
+# and last-access times, and mtools stamps those with the clock unless told
+# otherwise. mkfs.vfat reads it too, for the same reason.
 docker run --rm -v "${WORK}:/w" -e IMAGE_MB="${IMAGE_MB}" -e VOLUME_ID="${VOLUME_ID}" \
+	-e SOURCE_DATE_EPOCH=315532800 \
 	alpine:3.22 sh -euc '
 	apk add --no-cache dosfstools mtools sfdisk >/dev/null
 
@@ -350,7 +377,9 @@ docker run --rm -v "${WORK}:/w" -e IMAGE_MB="${IMAGE_MB}" -e VOLUME_ID="${VOLUME
 	# no loop device is needed and this runs unprivileged.
 	PART_MB=$((IMAGE_MB - 1))
 	dd if=/dev/zero of=/w/part.img bs=1M count="${PART_MB}" status=none
-	mkfs.vfat -F 32 -n BOOT -i "${VOLUME_ID}" /w/part.img >/dev/null
+	# --invariant because the volume label is stored as a directory entry and
+	# mkfs stamps it with the clock; -i alone fixes the serial but not that.
+	mkfs.vfat -F 32 -n BOOT -i "${VOLUME_ID}" --invariant /w/part.img >/dev/null
 
 	printf "drive z: file=\"/w/part.img\"\n" > /etc/mtools.conf
 	cd /w/stage
@@ -366,8 +395,11 @@ docker run --rm -v "${WORK}:/w" -e IMAGE_MB="${IMAGE_MB}" -e VOLUME_ID="${VOLUME
 	cat /w/part.img >> /w/card.img
 	rm -f /w/part.img
 
-	# One bootable FAT32 partition starting at 1MiB (LBA 2048).
-	printf "label: dos\nunit: sectors\n2048,,c,*\n" | sfdisk -q /w/card.img >/dev/null
+	# One bootable FAT32 partition starting at 1MiB (LBA 2048). label-id is
+	# pinned because sfdisk otherwise generates a random MBR disk signature,
+	# which lands in bytes 440-443 and makes every build a different image.
+	printf "label: dos\nlabel-id: 0xf4a3e100\nunit: sectors\n2048,,c,*\n" \
+		| sfdisk -q /w/card.img >/dev/null
 ' >/dev/null 2>&1 || { echo "ERROR: image assembly failed" >&2; exit 1; }
 
 verify_image "${IMG}"
