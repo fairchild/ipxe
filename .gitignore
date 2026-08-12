@@ -1,1 +1,3 @@
 *.img.gz
+# Card images are built artifacts, not sources (scripts/build-pi-uefi-card.sh).
+/dist/

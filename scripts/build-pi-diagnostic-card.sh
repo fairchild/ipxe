@@ -36,7 +36,10 @@ DISK="${DISK#r}"
 RAW="/dev/r${DISK}"
 
 [ -f "${KEY_PATH}" ] || { echo "no public key at ${KEY_PATH}" >&2; exit 1; }
-[ -n "${IMAGE}" ] && [ -f "${IMAGE}" ] || { echo "set IMAGE=/path/to/raspios.img.xz" >&2; exit 1; }
+if [ -z "${IMAGE}" ] || [ ! -f "${IMAGE}" ]; then
+	echo "set IMAGE=/path/to/raspios.img.xz" >&2
+	exit 1
+fi
 
 if diskutil info "${DISK}" | grep -q "Internal:.*Yes"; then
   echo "REFUSING: ${DISK} is an internal disk." >&2

@@ -1,0 +1,36 @@
+name: Card Tools
+
+# The SD card is the one artifact a person handles physically, so a mistake in
+# the tools that build it is discovered by walking to a Pi. These checks are
+# the parts that can be settled without hardware: the firmware editor's
+# behaviour, and that the builders are syntactically sound.
+
+on:
+  push:
+    branches: [main]
+    paths: [scripts/**, .github/workflows/card-tools-test.yml]
+  pull_request:
+    paths: [scripts/**, .github/workflows/card-tools-test.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  card-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check bash scripts
+        run: shellcheck -s bash scripts/build-pi-uefi-card.sh scripts/build-pi-diagnostic-card.sh
+
+      # The scrub decides whether a published card image carries a real MAC
+      # address, so it gets tested against a synthetic EDK2 variable store
+      # rather than trusted.
+      - name: Test the UEFI variable editor
+        run: python3 scripts/test-uefi-vars.py
