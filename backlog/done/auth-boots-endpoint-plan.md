@@ -6,7 +6,7 @@ arc: security-debts
 
 # Auth on /api/boots and cheap fleet counting
 
-**Repo: `~/code/services/ipxe`** (Cloudflare Worker, Hono, bun; tests via `bun run test`).
+**Component: separately operated control-plane Worker** (Hono, bun; tests via `bun run test`).
 
 `src/routes/checkin.ts` exposes `GET /api/boots` with no auth and no rate limit. It lists fleet MACs, internal IPs, and boot history publicly, and calls `countPrefix()` — a full KV list scan over up to 90 days of `bootrev:` keys — on every request. Information leak + cost amplifier.
 
@@ -19,11 +19,11 @@ Fix:
 
 Do not break `GET /api/checkin` — iPXE calls it unauthenticated by design at boot time (identity arrives via first-boot-token-plan).
 
-Outcome: merge-ready PR against the services repo. Deploy (`wrangler deploy` + secret) is Michael's step; say so in the PR body.
+Outcome: merge-ready control-plane change. Deploy (`wrangler deploy` + secret) is Michael's step; say so in the review notes.
 
 ---
 - 2026-07-04T18:24:11Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:24:51Z progress | pin-ipxe-binaries: agent dispatched in worktree, branch fix/pin-ipxe-binaries
-- 2026-07-04T18:25:02Z progress | correction: previous line was about pin-ipxe-binaries; this task: agent dispatched to services repo worktree, branch fix/ipxe-boots-auth
+- 2026-07-04T18:25:02Z progress | correction: previous line was about pin-ipxe-binaries; this task: agent dispatched to the control-plane worktree
 - 2026-07-04T18:31:48Z advanced to=done
-- 2026-07-04T18:31:48Z progress | PR=https://github.com/fairchild/services/pull/1068 45 tests pass; fails closed w/o DASHBOARD_TOKEN; countPrefix scan replaced by counters; .dev.vars gitignored (was not!); deploy+secret are Michael's steps
+- 2026-07-04T18:31:48Z progress | control-plane change passed 45 tests; fails closed w/o DASHBOARD_TOKEN; countPrefix scan replaced by counters; .dev.vars gitignored (was not!); deploy+secret are Michael's steps

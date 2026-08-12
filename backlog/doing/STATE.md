@@ -33,9 +33,9 @@ RAM → no exchange attempted.
 
 ## 2026-08-09 — the frame gains a control loop (code complete at the time; superseded above)
 
-The role-ack now hands a RAM boot a per-boot machine token alongside its
+The role-ack now hands a RAM boot a rotating machine token alongside its
 config, and frame-render spends it once per pass: a five-field status out
-(image on glass, sink, showable count, manifest health, uptime), the
+(content digest on glass, sink, showable count, manifest health, uptime), the
 operator's current role config back. A config edit reaches a live frame
 within one `FRAME_POLL` (≤300 s) instead of at next reboot, and
 `last_checkin` moves every pass — which, once deployed, makes the dashboard's
@@ -44,16 +44,12 @@ a frame" landmine. The display never depends on the control plane: no token
 file means no exchange and exactly the old behavior. Contract documented in
 `discovery/README.md` ("The control loop").
 
-The Worker half plus dashboard (frame-status section, role-config editor with
-server-side token redaction — `<redacted>` round-trips without exposing or
-clobbering the secret — and the reset/delete verbs) is two commits on
-`fairchild/services` branch `feat/ipxe-frame-dashboard` (worktree at
-`~/.worktrees/services/feat-ipxe-frame-dashboard`, branched from
-`feat/frame-source-config`, which is itself unmerged — merge order matters).
-249 tests green there; every new test was mutation-checked red. **Nothing is
-deployed**: Worker first, then rebuild and upload the overlay, verify the
-served hash — the checkin endpoint's `status` field does not exist in
-production yet.
+The companion control plane adds the frame-status section, a role-config editor
+whose `<redacted>` sentinel round-trips without exposing or clobbering the
+secret, and reset/delete controls. The node half keeps the role-ack token
+private, reports only an image content digest rather than the source filename,
+uses HTTPS for authenticated check-ins, and treats control-plane failures as
+soft so that rendering never depends on them.
 
 ## 2026-08-08 latest — the frame is on glass (HDMI)
 
@@ -79,8 +75,8 @@ own work item.
 
 The bench Pi **is now the frame**: state `active`, role `frame`, and every
 boot since assignment serves the frame script. Assignment-to-active-heartbeat
-measured at **88 seconds** with no hands. Worker version `9f8a9f01`
-(services#1212), overlay `b861f84b…` (ipxe#13); `wrangler tail` across the
+measured at **88 seconds** with no hands. Control-plane version `9f8a9f01`,
+overlay `b861f84b…` (ipxe#13); `wrangler tail` across the
 whole window: **zero rejected check-ins**. The node dry-run renders the
 `frames/` R2 directory to `/tmp/frame-preview.png` — the panel isn't attached
 yet, and per `backlog/todo/frame-role.md` **Slice 0b (vendored inky wheels)
@@ -239,10 +235,10 @@ time it is indispensable.
 
 ## Next steps, in order
 
-1. **Merge PR #1172** (`fairchild/services` @ `feat/ipxe-pi-serial-console`).
-   Everything it carries is now verified against hardware. Production is
-   deployed from that branch and is ahead of `main`; this repo has carried
-   unnoticed deploy drift for weeks before.
+1. **Merge the companion serial-console control-plane change.** Everything it
+   carries is now verified against hardware. Production was deployed ahead of
+   that repository's main branch; this repo has carried unnoticed deploy drift
+   before.
 2. **Fix the openrc `crashed` reporting** — see the backlog item. Small, and it
    restores `need` and `rc-status` as usable tools.
 3. **The boot image** (`own-boot-image-plan.md`). It moots a third of the

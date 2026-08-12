@@ -77,7 +77,9 @@ def api_base() -> str:
         cmdline = ""
     m = re.search(r"ipxe_api=(\S+)", cmdline)
     base = m.group(1) if m else "https://ipxe.cloudcompute.com"
-    return base.rstrip("/").replace("https:", "http:", 1)
+    # discovery-clock runs before modloop and the frame service, so TLS is
+    # available here. Never downgrade the rotating bearer token to cleartext.
+    return base.rstrip("/")
 
 
 def load_config():
@@ -118,6 +120,12 @@ def wire_sink(name: str) -> str:
     return "inky" if name == "panel" else name
 
 
+def image_status_id(raw: bytes) -> str:
+    """A content identifier the control plane can show without receiving the
+    private manifest filename."""
+    return hashlib.sha256(raw).hexdigest()
+
+
 # A named User-Agent, because the zone 403s urllib's default one
 # (Python-urllib/3.x reads as a bot upstream). Verified on hardware.
 USER_AGENT = "frame-display/1"
@@ -149,11 +157,12 @@ class ControlPlane:
     """The frame's half of the control loop: trade a status report for the
     config the operator currently wants this machine to run.
 
-    The token is this boot's, minted by the role-ack and written to tmpfs by
-    discovery.start. With no token or no id there is no exchange at all. It
-    rides the same plain-HTTP base as the manifest — a clockless board cannot
-    do TLS at boot — so treat it as a LAN secret: it is scoped to one machine
-    and worthless the moment that machine reboots.
+    The token is minted by the role-ack and written to tmpfs by discovery.start.
+    With no token or no id there is no exchange at all. It rides the same
+    authenticated HTTPS control plane as the boot ack. Its RAM copy dies with
+    this boot; the server accepts it until the next successful role-ack rotates
+    the stored hash, or an operator resets/deletes the machine. It is still a
+    bearer token and must not cross the network in cleartext.
 
     Failure is soft and reported once per consecutive-failure streak. At a
     300 s cadence a night of unreachable control plane would otherwise write
@@ -176,17 +185,18 @@ class ControlPlane:
                 token,
                 {"status": status},
             )
-            # An absent field means a Worker that predates config refresh; an
-            # explicit null means the operator cleared the config. Only the
-            # second may drop the RAM copy.
+            # An older Worker omits config entirely; that means "no refresh
+            # support", not "clear the file". The current Worker sends null
+            # explicitly when the operator cleared a RAM role's config.
             if isinstance(body, dict) and "config" in body:
                 config = body["config"]
+                current = load_config()
                 # Compare against the file rather than the loop's copy: the
                 # file is what the loop adopts from, so this cannot re-adopt
                 # what the ack already delivered on the first pass.
-                if isinstance(config, dict) and config != load_config():
+                if isinstance(config, dict) and config != current:
                     self.adopt(config)
-                elif config is None and load_config() is not None:
+                elif config is None and current is not None:
                     self.clear()
         except Exception as exc:  # noqa: BLE001 — the display outranks this
             self.failures += 1
@@ -213,14 +223,12 @@ class ControlPlane:
         log("checkin delivered a new role config; adopting it this pass")
 
     def clear(self) -> None:
-        """The clear rides the same path as adoption: remove the file the loop
-        re-reads every pass, and the identity-change reset falls back to the
-        default source on its own."""
+        """Remove the RAM config only on the Worker's explicit null signal."""
         try:
-            os.remove(CONFIG_PATH)
-        except OSError:
+            os.unlink(CONFIG_PATH)
+        except FileNotFoundError:
             return
-        log("checkin delivered a cleared role config; back to the default source")
+        log("checkin cleared the role config; using the fallback this pass")
 
 
 class FramebufferSink:
@@ -339,6 +347,7 @@ def main() -> None:
     cache: dict[str, bytes] = {}
     showable: list[str] = []
     current: str | None = None
+    current_sha256: str | None = None
     current_sink: str | None = None
     manifest_ok = False
 
@@ -350,8 +359,9 @@ def main() -> None:
             # finished — five short fields, far under the 2048-byte cap.
             control.exchange(
                 {
-                    # Names come from a manifest this node does not author.
-                    "image": current[:200] if current else None,
+                    # The filename belongs to the private source. A digest is
+                    # enough to correlate the dashboard with a manifest entry.
+                    "image_sha256": current_sha256,
                     "sink": current_sink,
                     "images": len(showable),
                     "ok": manifest_ok,
@@ -424,6 +434,7 @@ def main() -> None:
                 # every frame in a fleet shows the same picture and a reboot
                 # lands on the schedule instead of restarting it.
                 current = showable[int(time.time() / ROTATE_SECONDS) % len(showable)]
+                current_sha256 = image_status_id(cache[current])
                 for sink in active:
                     if shown.get(sink.name) == current and not getattr(
                         sink, "repaint_always", False

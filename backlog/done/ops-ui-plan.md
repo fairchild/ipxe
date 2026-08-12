@@ -24,5 +24,5 @@ Outcome: merge-ready PR.
 
 ---
 - 2026-07-07T02:48:48Z advanced to=doing claimer=fairchild@blue branch=main
-- 2026-07-07T03:14:24Z progress | PR=https://github.com/fairchild/services/pull/1072 delivered: /dashboard + /about + stats/detail APIs, 106 tests; screenshots ~/ipxe-ops-ui-screenshots reviewed, quality high; task stays in doing/ until review round dispositioned per Michael's protocol
-- 2026-07-07T04:34:13Z advanced to=done | PR=https://github.com/fairchild/services/pull/1072 review dispositioned (3 threads fixed incl. per-MAC event index), 124 tests at stack top
+- 2026-07-07T03:14:24Z progress | control-plane change delivered /dashboard + /about + stats/detail APIs, 106 tests; screenshots reviewed, quality high; task stays in doing/ until review round dispositioned per Michael's protocol
+- 2026-07-07T04:34:13Z advanced to=done | control-plane review dispositioned (3 threads fixed incl. per-MAC event index), 124 tests at stack top

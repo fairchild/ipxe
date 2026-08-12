@@ -37,6 +37,15 @@ if [ ! -d "${OVERLAY_DIR}" ]; then
 	exit 1
 fi
 
+# Python cache files are host-specific build debris, not source. A local
+# py_compile once slipped one into the apkovl, so fail closed instead of
+# silently publishing an accidental artifact to every booting node.
+PYTHON_CACHE="$(find "${OVERLAY_DIR}" \( -type d -name __pycache__ -o -type f \( -name '*.pyc' -o -name '*.pyo' \) \) -print -quit)"
+if [ -n "${PYTHON_CACHE}" ]; then
+	echo "ERROR: Python cache file would enter overlay: ${PYTHON_CACHE}" >&2
+	exit 1
+fi
+
 # Anything openrc or the local service executes must carry its exec bit inside
 # the tar, or it is silently skipped at boot with no error anywhere. Git does
 # preserve the bit, but a fresh checkout on a filesystem that does not (or an

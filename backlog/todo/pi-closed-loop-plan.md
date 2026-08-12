@@ -41,8 +41,8 @@ Two independent fixes, and we want both:
 
 ### A. Control plane — the admin panel an agent can drive
 
-The dashboard (`services/ipxe/public/dashboard.html`, live, DASHBOARD_TOKEN)
-already does lifecycle board, health tiles, boot feed, machine detail. What
+The live control-plane dashboard (authenticated with `DASHBOARD_TOKEN`) already
+does lifecycle board, health tiles, boot feed, and machine detail. What
 it cannot do is let anything *change* a machine's boot behaviour except
 assigning a role from `discovered`/`pending`.
 

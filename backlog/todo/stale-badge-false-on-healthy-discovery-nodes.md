@@ -49,5 +49,5 @@ Whichever lands, verify by mutation: confirm the badge goes true on a node that
 genuinely has not been heard from, not merely that it goes false on a healthy
 one. Both are needed; only one is currently observed.
 
-Lives in `fairchild/services` under `ipxe/src/lib/registry.ts` (`isStale`) and
-`ipxe/src/routes/stats.ts`.
+Lives in the companion control-plane service's registry staleness helper and
+stats route.

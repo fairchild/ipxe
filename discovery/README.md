@@ -62,8 +62,8 @@ The Worker serves the overlay from R2 at
   --file dist/discovery.apkovl.tar.gz --content-type application/gzip
 ```
 
-Or, from the services/ipxe repo, point its `scripts/upload-to-r2.sh` at the
-artifact:
+An operator with the separate control-plane checkout can instead point its R2
+upload helper at the artifact:
 
 ```bash
 DISCOVERY_APKOVL=/path/to/ipxe/discovery/dist/discovery.apkovl.tar.gz \
@@ -260,40 +260,44 @@ picture and a reboot lands mid-schedule instead of restarting it.
 
 ### The control loop
 
-The ack response carries a `token` alongside `config`: a machine token minted
-for this boot alone. `discovery.start` writes it to `/tmp/machine-token`
-(0600) beside the machine id in `/tmp/machine-id`, then removes the raw ack
-body. Nothing persists it — a reboot re-acks and gets a new one.
+The ack response carries a `token` alongside `config`. `discovery.start` writes
+the token to `/tmp/machine-token` (0600) beside the machine id in
+`/tmp/machine-id`, then removes the raw ack body. The node's plaintext copy dies
+with its RAM boot. The server accepts the token until the next successful
+role-ack rotates its stored hash, or an operator resets/deletes the machine;
+power loss alone is not server-side expiry.
 
 `frame-render.py` spends it once per pass, before the manifest fetch:
 
 ```http
 POST <api>/api/machines/<machine_id>/checkin
-Authorization: Bearer <this boot's token>
+Authorization: Bearer <role-ack token>
 
-{"status": {"image": "beach.jpg", "sink": "framebuffer",
+{"status": {"image_sha256": "<64 hex characters>", "sink": "framebuffer",
             "images": 12, "ok": true, "up": 3600}}
 
 200 {"id": "...", "state": "active", "config": { ...role config... }}
 ```
 
-`image` is what is on the glass (null if nothing yet), `sink` is
-`framebuffer`, `inky`, `preview` or null, `images` counts what the frame can
-show from RAM, `ok` is whether the last manifest fetch succeeded, and `up` is
-`/proc/uptime`. Flat, five fields, well under the Worker's 2048-byte cap on
-the status object.
+The exchange stays on HTTPS. `discovery-clock` runs before the frame service,
+so the RTC-less board has a usable clock by the time this rotating bearer token
+crosses the network.
 
-`config` is whatever the operator has set now. When it differs from the file
-in force, the render loop writes it to `/tmp/role-config.json` (0600) and the
-per-pass config re-read adopts it on the same pass — so a config change
-reaches a live frame within one `FRAME_POLL` (≤300 s) rather than at next
-reboot. An explicit `null` means the operator cleared the config: the frame
-removes its RAM copy and falls back to the default source the same way. The
-field *absent entirely* means a Worker that predates config refresh, and
-changes nothing — the two cases are deliberately distinct on the wire. Every failure — unreachable, 401,
-unparseable — is logged once per consecutive-failure streak and otherwise
-ignored, and a boot with no token file simply never checks in: the display does
-not depend on the control plane.
+`image_sha256` identifies the bytes on the glass without sending the private
+manifest filename (null if nothing has been shown), `sink` is `framebuffer`,
+`inky`, `preview` or null, `images` counts what the frame can show from RAM,
+`ok` is whether the last manifest fetch succeeded, and `up` is `/proc/uptime`.
+Flat, five fields, well under the Worker's 2048-byte cap on the status object.
+
+`config` is whatever the operator has set now, and is explicitly `null` when
+they have cleared it. When it differs from the file in force, the render loop
+writes it to `/tmp/role-config.json` (0600), or removes that RAM file on an
+explicit `null`; the per-pass config re-read adopts the change on the same pass.
+An older Worker that omits the field does not clear anything. A config change
+therefore reaches a live frame within one `FRAME_POLL` (≤300 s) rather than at
+next reboot. Every failure — unreachable, 401, unparseable — is logged once per
+consecutive-failure streak and otherwise ignored, and a boot with no token file
+simply never checks in: the display does not depend on the control plane.
 
 Deploy order is the same rule as the heartbeat's, for the same reason:
 **Worker first, then rebuild and upload the overlay.** The other order gives
@@ -302,8 +306,8 @@ every test on both sides still green.
 
 ## Verify with QEMU
 
-The overlay was verified end-to-end against a local `wrangler dev` (see the
-companion PR in fairchild/services). Fetch the pinned kernel/initrd once:
+The overlay was verified end-to-end against a local control-plane Worker.
+Fetch the pinned kernel/initrd once:
 
 ```bash
 BASE=https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/x86_64/netboot
@@ -312,8 +316,8 @@ curl -sSL -o cache/vmlinuz-lts   "$BASE/vmlinuz-lts"
 curl -sSL -o cache/initramfs-lts "$BASE/initramfs-lts"
 ```
 
-Start `wrangler dev` in the services/ipxe repo (serves on :8787 with local
-D1/KV/R2), upload the overlay into the local preview bucket, then:
+Start the companion Worker under `wrangler dev` (serves on :8787 with local
+D1/KV/R2), upload the overlay into its local preview bucket, then:
 
 ```bash
 qemu-system-x86_64 \

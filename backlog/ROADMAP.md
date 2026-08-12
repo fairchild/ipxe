@@ -4,7 +4,12 @@
 
 A network-boot system that takes any machine Michael owns — modern UEFI, old BIOS, Raspberry Pi, VM — from bare metal to a registered, configured server. Power on a blank box at any site; it boots a discovery OS, inventories itself, and appears in a dashboard as *pending*; assign it a role; it installs unattended and reboots as a working server holding a per-machine token. Zero-touch to registered, one click to role, zero-touch from role to working server.
 
-Two repos form the system: this one builds the bootstrap container (dnsmasq proxy DHCP + TFTP, `ghcr.io/fairchild/ipxe-bootstrap`); `~/code/services/ipxe` is the Cloudflare Worker at `ipxe.cloudcompute.com` serving menus, scripts, binaries, and the registry. Most roadmap work lands in the Worker; this backlog coordinates both.
+Two components form the system: this repository builds the bootstrap container
+(dnsmasq proxy DHCP + TFTP, `ghcr.io/fairchild/ipxe-bootstrap`), while a
+separately operated Cloudflare Worker at `ipxe.cloudcompute.com` serves menus,
+scripts, binaries, and the registry. This backlog records the public node-side
+work and the wire contract between them without naming the Worker's source
+repository.
 
 ## Principles
 

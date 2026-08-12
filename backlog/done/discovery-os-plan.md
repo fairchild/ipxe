@@ -8,7 +8,9 @@ dependencies:
 
 # Discovery OS: RAM-boot image that inventories and registers
 
-**Repos: both** — image build tooling lives in `~/code/ipxe` (new `discovery/` dir); the menu entry and overlay serving belong to `~/code/services/ipxe`.
+**Components: both** — image build tooling lives in this repository's
+`discovery/` directory; the menu entry and overlay serving belong to the
+separately operated control-plane Worker.
 
 The spine of zero-touch join: a blank machine netboots into a small RAM-only Linux, inventories hardware, registers with the Worker as `discovered`, receives its first-boot token, and polls for a role assignment. Doubles as the ephemeral/lab boot target (rescue shell).
 
@@ -31,4 +33,4 @@ Outcome: merge-ready PR per repo touched, cross-linked.
 - 2026-07-04T18:41:18Z advanced to=doing claimer=fairchild@blue branch=main
 - 2026-07-04T18:42:14Z progress | discovery-os agent dispatched: overlay build in ipxe repo (feat/discovery-os off main), worker routes stacked on feat/ipxe-machine-registry
 - 2026-07-04T19:06:32Z advanced to=done
-- 2026-07-04T19:06:33Z progress | PRs: ipxe#2 + services#1070; verified unit(68 tests)+container-sim+QEMU netboot round-trip vs wrangler dev; Alpine 3.22 pinned; wrangler dev needs run_worker_first (latent config gap, flagged not committed)
+- 2026-07-04T19:06:33Z progress | node and control-plane changes verified with unit(68 tests)+container-sim+QEMU netboot round-trip vs wrangler dev; Alpine 3.22 pinned; wrangler dev needs run_worker_first (latent config gap, flagged not committed)
