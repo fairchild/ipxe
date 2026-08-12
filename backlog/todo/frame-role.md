@@ -168,10 +168,15 @@ not the end-to-end courier.
 - **Slice 0 — image on glass** (bench, no merge): attach the panel, apk/pip
   the package map, run an inky example over ssh. Everything except the glass
   itself is already proven.
-- **Slice 0b — the display stack on the node** (prerequisite of glass, see
-  above): build aarch64-musl wheels once on the node (`apk add gcc
-  python3-dev musl-dev py3-pip`, `pip wheel inky`), upload to R2, teach
-  `ensure_deps` to `pip install --no-index --find-links` them.
+- **Slice 0b — the display stack on the node**: **DONE 2026-08-12**
+  (ipxe#26 + #27). Went further than planned: not wheels alone but one
+  versioned bundle this project builds, pins and serves —
+  `discovery/build-display-bundle.sh`, 45 Alpine packages + 5 wheels, locked
+  by name/version/SHA-256, byte-for-byte reproducible, installed with
+  `apk --no-network` and unzipped rather than pip-installed, so no resolver
+  runs on the node at all. Boot to `display stack ready`: 8 s. `inky` 2.4.0
+  is on the node for the first time; every frame boot before this was
+  silently dry-run.
 - **Slice 1 — assign → zero-touch frame**: **DONE 2026-08-08**
   (control-plane and node changes deployed and proven on hardware). Assignment to
   active frame heartbeat in 88 s; second boot re-served the frame script
@@ -197,5 +202,12 @@ not the end-to-end courier.
   or an operator resets/deletes the machine; power loss alone is not expiry.
   Deploy Worker first, then rebuild/upload the overlay, reboot the Pi, and
   require a fresh dashboard status before enabling watchdog automation.
-- **Slice 2 — card builder**: `build-pi-uefi-card.sh` as above; a second Pi
-  from blank card to frame with no manual UEFI or config.txt step.
+- **Slice 2 — card builder**: **BUILT 2026-08-12** (ipxe#26), **not yet
+  flashed**. `scripts/build-pi-uefi-card.sh` writes a deterministic,
+  structurally verified image from pinned, hash-checked inputs and refuses to
+  build without the custom iPXE binary. The zero-touch part needed something
+  the plan did not anticipate: a factory pftf image cannot be given
+  `SystemTableMode=2` offline (empty variable store), so the card is seeded
+  from a working Pi and scrubbed of that machine's identity —
+  `patch-rpi-uefi-vars.py scrub`, verified by searching the bytes for any
+  MAC-shaped sequence. Flashing and booting one is the open experiment.
