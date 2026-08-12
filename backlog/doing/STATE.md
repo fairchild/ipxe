@@ -1,8 +1,68 @@
-# Current state — 2026-08-10
+# Current state — 2026-08-12
 
 Written as a handoff. Read this first; it is the fastest path back into context.
 
-## 2026-08-10 — control loop MERGED AND DEPLOYED; one reboot from proven
+## 2026-08-12 — the display stack is real, and the frame is one panel from glass
+
+The reboot the section below was waiting for happened, twice, and the frame
+now runs the whole chain end to end: bundle → authenticated trips manifest →
+photograph. What it does not have is a panel. `no panel (RuntimeError: No
+EEPROM detected!)` is the honest, current state of the hardware — nothing is
+plugged into the header — so the picture lands on the preview sink and the
+dashboard says exactly that. **Physical Inky proof remains the one open
+gate**, and it is blocked on hardware, not on software.
+
+**Slice 0b is done** (ipxe#26). The display stack is one artifact this
+project builds, pins and serves: `build-display-bundle.sh` resolves 45 Alpine
+packages and 5 wheels inside a target-architecture container, locks every
+name/version/SHA-256, and emits a tarball the overlay pins by hash. Boot to
+`display stack ready` is **8 seconds**. The bundle is byte-for-byte
+reproducible. `inky` 2.4.0 is present on the node for the first time — every
+production frame boot before this one was silently dry-run, which no health
+signal would ever have shown.
+
+**Slice 2 is done** (same PR). `scripts/build-pi-uefi-card.sh` writes a
+deterministic, structurally verified card image from pinned inputs, and
+refuses to build if the custom iPXE binary is missing rather than
+substituting a stock one that boots to a shell. `dist/pi4-frame-card-v1-
+v1.38.img.gz`, two builds, identical bytes. **Not yet flashed or booted** —
+that is the next physical experiment, and it is what would move the Pi 4 row
+of `docs/pi-support-matrix.md` from "proven by the bench card" to "proven by
+a card this repo built".
+
+Live state, checked rather than assumed: `last_checkin` moves every ~5 min,
+`role_status` reads `sink=preview`, `images=14`, `ok=true`, `panel_error` set,
+and the reported `image_sha256` matches a manifest entry exactly. The stale
+badge is honest for frames now.
+
+Four things the hardware taught, none of which a test would have:
+
+- **`apk` will not install a local package on a diskless root** without
+  `--force-non-repository`; the guard is right and the RAM node is the
+  exception it exists for.
+- **`apk` keeps consulting the cmdline mirrors even installing from files**,
+  picks a dependency that lives only there, then fails it as `masked in:
+  --no-network`. `--repositories-file /dev/null` is what "install this bundle
+  and nothing else" actually requires. Four failed boots found this; the
+  scratch-root test that passed beforehand could not, because a fresh
+  `--initdb` root has no repositories to consult. *A test that cannot
+  reproduce the condition is not evidence about it.*
+- **`strings | grep -q` lies under `set -o pipefail`** — grep exits at the
+  first match, strings takes SIGPIPE, the pipeline reports failure. It made
+  the card builder reject every valid iPXE binary it was given.
+- **A seeded `RPI_EFI.fd` carries the Pi it came from**: DHCP ClientId,
+  MAC-named NIC records, PXE boot options, plus 62 records the firmware had
+  deleted and never erased. `patch-rpi-uefi-vars.py scrub` removes them and
+  verifies by searching the bytes, because a factory image cannot be given
+  `SystemTableMode=2` offline — its variable store is empty.
+
+**The next physical steps, in order:** attach the 4" Impression (PIM600,
+640×400 UC8159 — but read the EEPROM, do not assume: a Spectra 6 4.0 is
+600×400 on a different controller and the override table carries both), watch
+`role_status.sink` change from `preview` to `inky`, then flash and boot a card
+this repo built.
+
+## 2026-08-10 — control loop MERGED AND DEPLOYED (the reboot it awaited is done, above)
 
 Both halves are in production. services#1239 (squash-merged) carried the
 Worker: `deploy-ipxe` ran on the merge push and applied D1 migration 0005
