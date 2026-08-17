@@ -8,6 +8,15 @@ iPXE boot, authenticated media delivery, rendering, and shared language:
 **[Frame role field guide](https://fairchild.github.io/ipxe/frame-role.html)**
 ([source](docs/frame-role.html)).
 
+A Raspberry Pi 4 joins that path from one generic SD card: `scripts/build-pi-uefi-card.sh`
+writes a deterministic image (pinned UEFI firmware, our iPXE binary, the settings that
+make Ethernet work; no secrets, no identity), `scripts/publish-card.sh` verifies and
+publishes it, and the control plane's setup page — `/frame` on the boot endpoint,
+operator token required — walks the rest: download with the checksum verified in the
+browser, write, boot, watch the machine check in, assign the role. Which boards can run
+it, and how each claim was established, is in
+[docs/pi-support-matrix.md](docs/pi-support-matrix.md).
+
 ## Quick Start
 
 ```bash
