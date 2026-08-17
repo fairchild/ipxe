@@ -30,6 +30,41 @@ says the first in as many words. The claim-token idea (a per-download secret in
 the image, so the watch step knows which machine is yours) is written up in
 `backlog/todo/card-claim-token.md` with why it is four small projects, not one.
 
+**From here, in order — each line with a gate is an operator decision, not
+mine:**
+
+1. Merge ipxe#30 (docs and scripts; nothing deploys). *gate: merge*
+2. Merge the control plane's setup-page PR; its CI deploys production, and
+   `/frame`, `/frame/walkthrough` and `/api/cards` go live with the card
+   already in the bucket. Re-run the eight wire checks against production
+   (401 without bearer, 301 off plaintext, attachment + no-store, sidecar
+   identical, download digest `a9a5a8c8…5a7f`, no token in HTML). *gate: merge*
+3. Rebuild the overlay from main and upload it, so the published apkovl no
+   longer carries `frame-render.py-e`; compare served hash to local. Deploy
+   order rule holds (Worker first) — the Worker did not change wire format,
+   so this is upload-only. *gate: production publish*
+4. First boot from a written card. Reset the bench frame's machine record to
+   `discovered` in the console (its MAC is the only Pi 4), flash
+   `dist/pi4-frame-card-v1-v1.38.img.gz` to a spare card — identify the exact
+   `/dev/diskN`, show size and model, one approval — keep the current bench
+   card as the rollback, and walk the wizard on production with the real
+   thing. Record power-on → first check-in → registration → assign → active
+   times. This is what moves the Pi 4 row from "assembled" to "proven from a
+   written card"; the model note comes out of the page and the matrix.
+   *gate: destructive write*
+5. Recapture `/frame/walkthrough` on production with that real boot (the
+   capture script, `EVENT_WAIT` ~70 s), or at least amend its callout to say
+   a real boot has since been observed and when.
+6. Attach the 4" Impression (power off first; read the EEPROM, do not assume
+   PIM600/UC8159 640×400 — a Spectra 6 4.0 is E640 600×400). Watch `sink`
+   go `preview → inky` in the wizard's step 5; photograph the glass; confirm
+   `image_sha256` matches the manifest entry; cold boot and soft reboot both
+   return to a picture; pull Ethernet for a few minutes and confirm the last
+   picture stays and status recovers. **This closes the original gate.**
+   *gate: soft reboot / power cycle*
+7. Then, and only then: the Pi 3 / Pi 2 v1.2 card family (pftf/RPi3), Pi 5
+   when upstream firmware exists, the claim token if the fleet grows.
+
 ## 2026-08-12 — the display stack is real, and the frame is one panel from glass
 
 The reboot the section below was waiting for happened, twice, and the frame
