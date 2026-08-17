@@ -1,6 +1,34 @@
-# Current state — 2026-08-12
+# Current state — 2026-08-16
 
 Written as a handoff. Read this first; it is the fastest path back into context.
+
+## 2026-08-16 — the card has a front door
+
+The control plane grew a setup page, `/frame` (operator token required), that
+walks one card from download to a machine checking in: it offers whatever
+`scripts/publish-card.sh` has put under the boot endpoint's `cards/` prefix,
+verifies the SHA-256 in the browser before handing the file over, gives the
+write commands for Imager / macOS / Linux, says what to expect from power-on
+second by second, then shows every boot event and registration since the
+button was pressed — grouped by MAC, Pi OUIs tagged, a ladder from iPXE menu
+to registered — and takes a registered machine on to the frame role and its
+Trips grant. Progress survives a reload. The publish script refuses an image
+without its sidecar or one that fails the builder's structural verification,
+and reads the upload back before it calls it published.
+
+Found on the way: `frame-render.py-e`, a `sed -i -e` backup, had been in the
+tree since #22 and in every published overlay since — byte-identical to the
+script beside it, harmless to run, and exactly the kind of file the "no debris
+in the overlay" claim said was absent. Removed; `build-overlay.sh` now fails on
+editor backups, Finder files and swap files as it already did on `__pycache__`.
+The published overlay still carries the stray copy until the next rebuild and
+upload.
+
+Still true, and unchanged by any of this: the card image has not been booted
+from a written card, and no panel is attached. `docs/pi-support-matrix.md` now
+says the first in as many words. The claim-token idea (a per-download secret in
+the image, so the watch step knows which machine is yours) is written up in
+`backlog/todo/card-claim-token.md` with why it is four small projects, not one.
 
 ## 2026-08-12 — the display stack is real, and the frame is one panel from glass
 

@@ -37,12 +37,19 @@ if [ ! -d "${OVERLAY_DIR}" ]; then
 	exit 1
 fi
 
-# Python cache files are host-specific build debris, not source. A local
-# py_compile once slipped one into the apkovl, so fail closed instead of
-# silently publishing an accidental artifact to every booting node.
-PYTHON_CACHE="$(find "${OVERLAY_DIR}" \( -type d -name __pycache__ -o -type f \( -name '*.pyc' -o -name '*.pyo' \) \) -print -quit)"
-if [ -n "${PYTHON_CACHE}" ]; then
-	echo "ERROR: Python cache file would enter overlay: ${PYTHON_CACHE}" >&2
+# Host debris is not source, and everything under overlay/ ships to every
+# booting node. Two kinds have actually got in: a local py_compile once left a
+# __pycache__, and a `sed -i -e` on macOS left `frame-render.py-e` beside the
+# script it edited — byte-identical, harmless to run, and published for a
+# week before anyone listed the tarball. Fail closed on both shapes: an
+# accidental file in the overlay is a file nobody reviewed.
+DEBRIS="$(find "${OVERLAY_DIR}" \( -type d -name __pycache__ \
+	-o -type f \( -name '*.pyc' -o -name '*.pyo' \
+		-o -name '*-e' -o -name '*.orig' -o -name '*.rej' -o -name '*.bak' -o -name '*~' \
+		-o -name '.DS_Store' -o -name '*.swp' \) \) -print -quit)"
+if [ -n "${DEBRIS}" ]; then
+	echo "ERROR: build debris would enter overlay: ${DEBRIS}" >&2
+	echo "       (editor backup, Python cache or Finder file — remove it; nothing in overlay/ is incidental)" >&2
 	exit 1
 fi
 

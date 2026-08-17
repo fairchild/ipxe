@@ -34,6 +34,16 @@ nothing about whether it supports the second.
 documentation-derived and labelled as such — no row is inferred from the row
 above it.
 
+One distinction inside the proven row. What has been observed on the Pi 4 is
+the *chain*: pftf v1.38 in Devicetree mode, our iPXE binary, HTTPS to the boot
+endpoint, Alpine to a rendered picture — netbooted from a bench Pi whose card
+carried stock pftf firmware and a PXE-first boot order. The card image that
+`scripts/build-pi-uefi-card.sh` assembles from those parts (SD/MMC first in its
+boot order, iPXE loaded from the card's own `EFI/BOOT/`) has been verified
+structurally but not yet booted from a written card. Until one is, the image
+counts as assembled from proven parts, not proven itself; the setup page says
+the same, and the note comes out of both when the first card boot lands.
+
 ## Why each unsupported row is unsupported
 
 **Pi 5** has no maintained UEFI. The one EDK2 port, `worproject/rpi5-uefi`, was
@@ -103,7 +113,9 @@ model does boot:
 
 For any Pi in the "Unverified" column, the evidence that would change it is the
 same and is not a document: flash a card, boot it, and watch for a registration
-inside that boot. A machine that answers ping, or that heartbeats, has proven
+inside that boot. The setup page on the boot endpoint (`/frame`, operator token
+required) is built for exactly that observation — it offers the published card,
+then shows every boot event and registration since power-on, grouped by MAC. A machine that answers ping, or that heartbeats, has proven
 neither — only a registration belonging to the current boot shows the chain
 completed. For the display half, only an observed refresh on the panel counts;
 a preview PNG and an HDMI framebuffer both render from the same pipeline

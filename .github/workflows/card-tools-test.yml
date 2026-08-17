@@ -27,7 +27,7 @@ jobs:
           python-version: "3.11"
 
       - name: Check bash scripts
-        run: shellcheck -s bash scripts/build-pi-uefi-card.sh scripts/build-pi-diagnostic-card.sh
+        run: shellcheck -s bash scripts/build-pi-uefi-card.sh scripts/build-pi-diagnostic-card.sh scripts/publish-card.sh
 
       # The scrub decides whether a published card image carries a real MAC
       # address, so it gets tested against a synthetic EDK2 variable store
