@@ -26,6 +26,10 @@ set -euo pipefail
 #
 # Bundles and overlays follow the same rule elsewhere in this repository:
 # verify a publish by comparing hashes, never by trusting the upload.
+#
+# Needs a logged-in wrangler (`wrangler login`). This repository has no
+# wrangler.toml, so a login with access to more than one account must say
+# which: `CLOUDFLARE_ACCOUNT_ID=... ./publish-card.sh`.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
