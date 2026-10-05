@@ -127,8 +127,7 @@ this repo built.
 
 ## 2026-08-10 — control loop MERGED AND DEPLOYED (the reboot it awaited is done, above)
 
-Both halves are in production. services#1239 (squash-merged) carried the
-Worker: `deploy-ipxe` ran on the merge push and applied D1 migration 0005
+Both halves are in production. The Worker half was squash-merged: `deploy-ipxe` ran on the merge push and applied D1 migration 0005
 before deploying — verified at the job level, then against the live API:
 the machine detail now carries `role_status`/`role_status_at` (null until a
 node reports one) and `role_config.token` reads back `<redacted>`. ipxe#22
